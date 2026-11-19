@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>База активистов Горного</title>
+<meta name="description" content="База активистов Горного: поиск активистов, должности на мероприятиях и комментарии ГО, кураторов и капитанов. Вход для организаторов.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Crect width='34' height='34' rx='9' fill='%23b9791a'/%3E%3Cpath d='M17 6 27 12v10l-10 6-10-6V12z' fill='none' stroke='%231b1303' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: narrow working column under a sticky bar; sign-in card when logged out; search list -> person card (contacts left, work + comments right) */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --ink:#141d2b; --muted:#5a6578; --line:#d9dfe8;
+  --accent:#b9791a; --accent-ink:#7a4d08; --accent-soft:#f6ead5;
+  --ok:#2c7a51; --ok-soft:#e1f1e8; --wait:#2f5f9e; --wait-soft:#e2ebf7; --bad:#b23a2e; --bad-soft:#f7e3e0;
+  --shadow:0 1px 2px rgba(20,29,43,.06),0 4px 16px rgba(20,29,43,.05);
+  --font-display:"Unbounded","Manrope",system-ui,sans-serif;
+  --font-body:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0e141d; --surface:#161e2b; --ink:#e6ebf2; --muted:#97a2b4; --line:#273244;
+    --accent:#e2a640; --accent-ink:#f0c47a; --accent-soft:#3a2d16;
+    --ok:#5cc28d; --ok-soft:#173226; --wait:#7fa9e6; --wait-soft:#1a2a42; --bad:#ec7f72; --bad-soft:#3b1d1a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5;min-height:100vh}
+a{color:inherit}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:26px;line-height:1.2}
+h2{font-size:16px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+.top{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--line)}
+.top-in{max-width:1040px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;margin-right:auto}
+.brand svg{flex:none}
+.brand b{font-family:var(--font-display);font-weight:600;font-size:15px;display:block;line-height:1.15}
+.brand small{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav a{padding:7px 12px;border-radius:8px;text-decoration:none;font-weight:600;color:var(--muted)}
+nav a:hover{color:var(--ink);background:var(--bg)}
+nav a[aria-current="page"]{color:var(--accent-ink);background:var(--accent-soft)}
+.me{display:flex;align-items:center;gap:8px}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--bg);color:var(--muted);white-space:nowrap}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.wait{background:var(--wait-soft);color:var(--wait)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.acc{background:var(--accent-soft);color:var(--accent-ink)}
+
+main{max-width:1040px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:20px}
+.lede{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;min-width:0}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+
+.auth{max-width:460px;width:100%;margin:4vh auto 0;display:flex;flex-direction:column;gap:16px}
+.auth .intro{display:flex;flex-direction:column;gap:6px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:10px;padding:4px;gap:4px}
+.tabs button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:8px;background:transparent;color:var(--muted);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+
+.searchbox{display:flex;align-items:center;gap:10px;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:4px 6px 4px 16px;box-shadow:var(--shadow);margin-top:16px}
+.searchbox:focus-within{border-color:var(--accent)}
+.searchbox svg{flex:none;color:var(--muted)}
+.searchbox input{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:18px;padding:12px 0;color:var(--ink);outline:none}
+.meta-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+
+.results{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,220px) 110px;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-decoration:none;transition:border-color .15s}
+.row:hover{border-color:var(--accent)}
+.avatar{width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--font-display);font-size:14px;font-weight:600;flex:none}
+.avatar.lg{width:64px;height:64px;font-size:20px;border-radius:16px}
+.name{font-weight:700;font-size:16px;overflow-wrap:anywhere}
+.sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.last{display:flex;flex-direction:column;min-width:0}
+.pos{font-weight:600;font-size:13px}
+.ev{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.count{text-align:right;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+@media (max-width:720px){.row{grid-template-columns:44px minmax(0,1fr)}.last,.count{grid-column:2;text-align:left}}
+.empty{background:var(--surface);border:1.5px dashed var(--line);border-radius:14px;padding:28px 20px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
+.empty strong{color:var(--ink);font-size:16px}
+
+.btn{font:inherit;font-weight:600;font-size:14px;border-radius:10px;padding:9px 16px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b1303}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.danger{color:var(--bad);border-color:transparent;background:transparent;padding:6px 8px}
+.btn.danger:hover{background:var(--bad-soft)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:6px 10px}
+.btn.ghost:hover{background:var(--bg);color:var(--ink)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.wide{width:100%}
+
+.back{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px;align-self:flex-start}
+.back:hover{color:var(--ink)}
+.person-head{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.person-head .grow{flex:1;min-width:200px}
+.person-head h1{overflow-wrap:anywhere}
+.grid{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:20px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+
+dl.contacts{margin:0;display:flex;flex-direction:column;gap:12px}
+dl.contacts div{display:flex;flex-direction:column;gap:1px;min-width:0}
+dl.contacts dt{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+dl.contacts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+dl.contacts dd a{color:var(--accent-ink);text-decoration:none}
+dl.contacts dd a:hover{text-decoration:underline}
+.copy{font:inherit;font-size:12px;font-weight:600;color:var(--muted);background:none;border:0;padding:0 0 0 8px;cursor:pointer}
+.copy:hover{color:var(--ink)}
+
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.date{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
+td.act{width:1%;white-space:nowrap;text-align:right}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink)}
+.tag.kur{background:var(--wait-soft);color:var(--wait)}
+.tag.kap{background:var(--ok-soft);color:var(--ok)}
+.tag.oth{background:var(--bg);color:var(--muted)}
+
+.comments{display:flex;flex-direction:column;gap:10px}
+.comment{border-left:3px solid var(--accent);padding:4px 0 4px 12px;display:flex;flex-direction:column;gap:4px}
+.comment.kur{border-left-color:var(--wait)}
+.comment.kap{border-left-color:var(--ok)}
+.comment.oth{border-left-color:var(--line)}
+.comment-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.comment-h .who{font-weight:700}
+.comment-h .when{color:var(--muted)}
+.comment-h .btn{margin-left:auto}
+.comment p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+form{display:flex;flex-direction:column;gap:12px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fields .full{grid-column:1/-1}
+@media (max-width:560px){.fields{grid-template-columns:minmax(0,1fr)}}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}
+input,select,textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:9px;padding:9px 11px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+textarea{resize:vertical;min-height:72px}
+.form-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.subform{border-top:1px solid var(--line);padding-top:14px}
+.subform h3{font-size:13px;font-family:var(--font-body);font-weight:700;margin-bottom:2px}
+.formerr{color:var(--bad);font-weight:600;font-size:14px;margin:0}
+.formerr:empty{display:none}
+
+.status{display:flex;gap:14px;align-items:flex-start}
+.status .dot{width:12px;height:12px;border-radius:50%;margin-top:6px;flex:none;background:var(--muted)}
+.status.ok .dot{background:var(--ok)} .status.wait .dot{background:var(--wait)} .status.bad .dot{background:var(--bad)} .status.acc .dot{background:var(--accent)}
+.status h2{font-size:17px}
+.status p{margin:4px 0 0;color:var(--muted);max-width:64ch}
+
+.overlay{position:fixed;inset:0;background:rgba(10,14,20,.5);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50;overflow-y:auto}
+.overlay[hidden]{display:none}
+.dialog{background:var(--surface);border-radius:16px;padding:22px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:16px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:60;max-width:min(560px,calc(100% - 32px));box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.toast.bad{background:var(--bad);color:#fff}
+.toast[hidden]{display:none}
+.skeleton{height:68px;border-radius:12px;background:linear-gradient(90deg,var(--surface),var(--bg),var(--surface));background-size:200% 100%;animation:sh 1.2s infinite linear;border:1px solid var(--line)}
+@keyframes sh{to{background-position:-200% 0}}
+select.access{width:auto;padding:6px 8px;font-size:14px}
+code{background:var(--bg);padding:1px 6px;border-radius:5px;font-size:13px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="#search" aria-label="На главную">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" fill="var(--accent)"/><path d="M17 6 27 12v10l-10 6-10-6V12z" fill="none" stroke="#1b1303" stroke-width="2" stroke-linejoin="round"/><path d="M17 6v22M7 12l10 6 10-6" fill="none" stroke="#1b1303" stroke-width="1.6" stroke-linejoin="round" opacity=".55"/></svg>
+      <span><b>Актив Горного</b><small>база активистов</small></span>
+    </a>
+    <nav id="nav"></nav>
+    <div class="me" id="me"></div>
+  </div>
+</header>
+<main id="view"><div class="skeleton"></div></main>
+
+<datalist id="dl-events"></datalist>
+<datalist id="dl-positions"></datalist>
+<div id="overlay" class="overlay" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" id="dialog"></div></div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+"use strict";
+/* ---------- constants & helpers ---------- */
+const POSITIONS=["Волонтёр","Организатор","Главный организатор","Куратор","Капитан команды","Ведущий","Фотограф","Видеограф","SMM","Регистрация","Техническая группа","Хелпер","Аниматор","Ответственный за площадку"];
+const COMMENT_ROLES=["ГО","Куратор","Капитан","Другое"];
+const USER_ROLES=["ГО","Куратор","Капитан","Активист","Другое"];
+const ACCESS={pending:["Ждёт подтверждения","wait"],viewer:["Просмотр",""],editor:["Редактор","ok"],admin:["Администратор","acc"],blocked:["Доступ закрыт","bad"]};
+const roleCls=r=>({"Куратор":"kur","Капитан":"kap","Другое":"oth","Активист":"oth"}[r]||"");
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm=s=>String(s||"").toLowerCase().replace(/ё/g,"е").replace(/\s+/g," ").trim();
+const MONTHS=["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+function initials(fio){const p=String(fio||"").trim().split(/\s+/);return ((p[0]||"?")[0]+((p[1]||"")[0]||"")).toUpperCase();}
+function fmtDate(d){if(!d)return"";const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d);if(!m)return esc(d);return `${+m[3]} ${MONTHS[+m[2]-1]} ${m[1]}`;}
+function fmtTs(ts){if(!ts)return"";const d=new Date(ts);if(isNaN(d))return"";return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;}
+function tgHandle(v){v=String(v||"").trim();if(!v)return"";return v.replace(/^https?:\/\/(www\.)?(t\.me|telegram\.me)\//i,"").replace(/^@/,"").split(/[/?#\s]/)[0];}
+function vkLink(v){v=String(v||"").trim();if(!v)return"";if(/^https?:\/\//i.test(v))return v;return "https://vk.com/"+v.replace(/^(www\.)?vk\.com\//i,"").replace(/^@/,"");}
+function vkLabel(v){return String(v||"").trim().replace(/^https?:\/\/(www\.)?/i,"");}
+function plural(n,a,b,c){const m10=n%10,m100=n%100;return n+" "+(m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20))?b:c);}
+let toastT;
+function toast(msg,bad){const t=$("#toast");t.textContent=msg;t.className="toast"+(bad?" bad":"");t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,bad?6500:2800);}
+function errText(e){
+  const m=String((e&&(e.message||e.error_description))||e||"");
+  if(/row-level security|permission denied/i.test(m))return "Нет прав на это действие. Попросите администратора выдать доступ «Редактор».";
+  if(/Invalid login credentials/i.test(m))return "Неверная почта или пароль.";
+  if(/Email not confirmed/i.test(m))return "Почта не подтверждена. Откройте письмо от Supabase и перейдите по ссылке.";
+  if(/already registered|already been registered/i.test(m))return "Этот адрес уже зарегистрирован. Войдите во вкладке «Вход».";
+  if(/Password should be at least/i.test(m))return "Пароль слишком короткий: нужно минимум 6 символов.";
+  if(/rate limit|too many/i.test(m))return "Слишком много попыток. Подождите пару минут.";
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Нет связи с базой. Проверьте интернет и попробуйте снова.";
+  if(/signups? not allowed|Signups not allowed/i.test(m))return "Регистрация на сайте выключена администратором.";
+  return m||"Что-то пошло не так. Попробуйте ещё раз.";
+}
+
+/* ---------- state ---------- */
+const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",current:null,users:[]};
+const access=()=>S.me&&S.me.access;
+const canView=()=>["viewer","editor","admin"].includes(access());
+const canEdit=()=>["editor","admin"].includes(access());
+const isAdmin=()=>access()==="admin";
+
+/* ---------- boot ---------- */
+async function boot(){
+  const cfg=window.AKTIV_CONFIG||{};
+  if(!window.supabase||!cfg.url||!cfg.key||/ВСТАВЬТЕ/.test(cfg.url+cfg.key)){renderSetup(!window.supabase);return;}
+  S.sb=window.supabase.createClient(cfg.url,cfg.key);
+  const {data}=await S.sb.auth.getSession();
+  S.session=data.session;
+  await loadMe();
+  S.sb.auth.onAuthStateChange((ev,session)=>{
+    const changed=(session&&session.user&&session.user.id)!==(S.session&&S.session.user&&S.session.user.id);
+    S.session=session;
+    if(changed)setTimeout(async()=>{await loadMe();S.listLoaded=false;route();},0);
+  });
+  route();
+}
+async function loadMe(){
+  S.me=null;
+  if(!S.session)return;
+  const {data,error}=await S.sb.from("profiles").select("*").eq("id",S.session.user.id).maybeSingle();
+  if(error){toast(errText(error),true);return;}
+  S.me=data;
+}
+function renderSetup(noLib){
+  $("#nav").innerHTML="";$("#me").innerHTML="";
+  $("#view").innerHTML=`<section class="card"><div class="status bad"><span class="dot"></span><div><h2>${noLib?"Не загрузилась библиотека Supabase":"Сайт ещё не подключён к базе"}</h2>
+  <p>${noLib?"Проверьте интернет и обновите страницу.":"Откройте файл <code>config.js</code> и вставьте туда Project URL и публичный ключ (anon / publishable) из настроек проекта Supabase. Подробности в инструкции README.md."}</p></div></div></section>`;
+}
+
+/* ---------- routing ---------- */
+function parseRoute(){const h=decodeURIComponent(location.hash.replace(/^#/,""));
+  if(h==="profile")return{v:"profile"};if(h==="users")return{v:"users"};
+  const m=/^a-([0-9a-f-]{36})$/i.exec(h);if(m)return{v:"a",id:m[1]};return{v:"search"};}
+addEventListener("hashchange",()=>{if(S.sb)route();});
+
+function route(){
+  renderTop();
+  if(!S.session){viewAuth();return;}
+  if(!S.me){viewNoProfile();return;}
+  const r=parseRoute();
+  if(r.v==="profile"){viewProfile();return;}
+  if(!canView()){viewWaiting();return;}
+  if(r.v==="users"&&isAdmin()){viewUsers();return;}
+  if(r.v==="a"){viewActivist(r.id);return;}
+  viewSearch();
+}
+function renderTop(){
+  const r=S.session&&S.me?parseRoute():null,cur=r?(r.v==="a"?"search":r.v):"";
+  let nav="";
+  if(S.session&&S.me){
+    if(canView())nav+=`<a href="#search"${cur==="search"?' aria-current="page"':""}>Поиск</a>`;
+    if(isAdmin())nav+=`<a href="#users"${cur==="users"?' aria-current="page"':""}>Пользователи</a>`;
+    nav+=`<a href="#profile"${cur==="profile"?' aria-current="page"':""}>Мой профиль</a>`;
+  }
+  $("#nav").innerHTML=nav;
+  if(S.session){
+    const a=ACCESS[access()]||["Без профиля","bad"];
+    $("#me").innerHTML=`<span class="chip ${a[1]}">${esc(a[0])}</span><button class="btn ghost" type="button" data-act="logout">Выйти</button>`;
+  }else $("#me").innerHTML="";
+}
+
+/* ---------- auth ---------- */
+let authTab="login";
+function viewAuth(){
+  document.title="Вход · База активистов Горного";
+  $("#view").innerHTML=`<div class="auth">
+    <div class="intro"><h1>База активистов Горного</h1><p class="lede">Поиск активистов, их должности на мероприятиях и комментарии ГО, кураторов и капитанов. Данные видны только после входа и подтверждения доступа.</p></div>
+    <section class="card">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="login" aria-selected="${authTab==="login"}">Вход</button>
+        <button type="button" role="tab" data-tab="signup" aria-selected="${authTab==="signup"}">Регистрация</button>
+      </div>
+      ${authTab==="login"?`
+      <form data-form="login">
+        <label for="l-email">Почта<input id="l-email" name="email" type="email" autocomplete="email" required></label>
+        <label for="l-pass">Пароль<input id="l-pass" name="password" type="password" autocomplete="current-password" required></label>
+        <p class="formerr" id="auth-err"></p>
+        <button class="btn primary wide" type="submit">Войти</button>
+        <p class="muted small" style="margin:0">Забыли пароль? Напишите администратору базы.</p>
+      </form>`:`
+      <form data-form="signup">
+        <p class="muted small" style="margin:0">После регистрации администратор подтвердит заявку и выдаст доступ: просмотр или редактирование.</p>
+        <div class="fields">
+          <label class="full" for="s-fio">ФИО<input id="s-fio" name="fio" required autocomplete="name" placeholder="Петров Иван Сергеевич"></label>
+          <label for="s-role">Кто вы<select id="s-role" name="role_title">${USER_ROLES.map(r=>`<option>${r}</option>`).join("")}</select></label>
+          <label for="s-phone">Телефон<input id="s-phone" name="phone" type="tel" autocomplete="tel" placeholder="+7 900 000-00-00"></label>
+          <label for="s-tg">Telegram<input id="s-tg" name="tg" placeholder="@nickname"></label>
+          <label for="s-dir">Направление / мероприятие<input id="s-dir" name="direction" placeholder="Посвящение, ДОД"></label>
+          <label class="full" for="s-email">Почта<input id="s-email" name="email" type="email" autocomplete="email" required></label>
+          <label class="full" for="s-pass">Пароль (минимум 6 символов)<input id="s-pass" name="password" type="password" autocomplete="new-password" minlength="6" required></label>
+        </div>
+        <p class="formerr" id="auth-err"></p>
+        <button class="btn primary wide" type="submit">Зарегистрироваться</button>
+      </form>`}
+    </section>
+  </div>`;
+}
+function viewNoProfile(){
+  $("#view").innerHTML=`<section class="card"><div class="status bad"><span class="dot"></span><div><h2>Профиль не найден</h2><p>Вход выполнен, но анкеты в базе нет. Скорее всего, база настроена не полностью: администратору нужно запустить скрипт <code>supabase-setup.sql</code>. Потом выйдите и зарегистрируйтесь заново.</p></div></div></section>`;
+}
+function viewWaiting(){
+  const st=access();
+  const t=st==="blocked"?["bad","Доступ закрыт","Администратор закрыл вам доступ к базе. Если это ошибка, свяжитесь с ним."]:["wait","Заявка на рассмотрении","Администратор базы увидит вашу заявку и выдаст доступ. После этого нажмите «Проверить доступ»."];
+  $("#view").innerHTML=`<section class="card"><div class="status ${t[0]}"><span class="dot"></span><div><h2>${t[1]}</h2><p>${t[2]}</p>
+  <div class="form-actions" style="margin-top:12px"><button class="btn primary" type="button" data-act="recheck">Проверить доступ</button><a class="btn" href="#profile">Мой профиль</a></div></div></div></section>`;
+}
+
+/* ---------- search ---------- */
+async function loadList(force){
+  if(S.listLoaded&&!force)return;
+  const [a,w]=await Promise.all([
+    S.sb.from("activists").select("id,fio,grp,tg,vk,email,phone").order("fio").limit(5000),
+    S.sb.from("work").select("id,activist_id,event,position,date").limit(20000)
+  ]);
+  if(a.error||w.error){toast(errText(a.error||w.error),true);return;}
+  S.activists=a.data||[];S.work=w.data||[];S.listLoaded=true;
+  const evs=[...new Set(S.work.map(x=>x.event).filter(Boolean))].sort((x,y)=>x.localeCompare(y,"ru"));
+  $("#dl-events").innerHTML=evs.map(e=>`<option value="${esc(e)}">`).join("");
+  const pos=[...new Set([...POSITIONS,...S.work.map(x=>x.position).filter(Boolean)])];
+  $("#dl-positions").innerHTML=pos.map(e=>`<option value="${esc(e)}">`).join("");
+}
+async function viewSearch(){
+  document.title="База активистов Горного";
+  $("#view").innerHTML=`
+  <section>
+    <h1>Поиск активиста</h1>
+    <p class="lede">Введите фамилию, имя или ник в Telegram, чтобы открыть карточку с контактами, должностями на мероприятиях и комментариями.</p>
+    <div class="searchbox">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Например: Иванова Мария" autocomplete="off" aria-label="ФИО активиста">
+    </div>
+    <div class="meta-row"><span id="stats" class="muted small"></span>${canEdit()?`<button class="btn primary" type="button" data-act="new">+ Добавить активиста</button>`:""}</div>
+  </section>
+  <section id="results" class="results" aria-live="polite"><div class="skeleton"></div><div class="skeleton"></div></section>`;
+  const q=$("#q");q.value=S.query;
+  q.addEventListener("input",()=>{S.query=q.value;renderResults();});
+  q.addEventListener("keydown",e=>{if(e.key==="Enter"){const f=$("#results a.row");if(f)location.hash=f.getAttribute("href").slice(1);}});
+  setTimeout(()=>q.focus(),0);
+  await loadList();
+  renderResults();
+}
+function renderResults(){
+  const res=$("#results");if(!res||!S.listLoaded)return;
+  const n=S.activists.length;
+  $("#stats").textContent=`В базе ${plural(n,"активист","активиста","активистов")} · ${plural(S.work.length,"запись","записи","записей")} о мероприятиях`;
+  if(!n){res.innerHTML=`<div class="empty"><strong>База пока пустая</strong><span>${canEdit()?"Добавьте первого активиста кнопкой выше.":"Активистов добавляют редакторы."}</span></div>`;return;}
+  const byA=new Map();for(const w of S.work){if(!byA.has(w.activist_id))byA.set(w.activist_id,[]);byA.get(w.activist_id).push(w);}
+  const toks=norm(S.query).split(" ").filter(Boolean),q0=toks[0]||"";
+  let list=S.activists.map(a=>({a,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone].join(" "))}));
+  if(toks.length)list=list.filter(x=>toks.every(t=>x.hay.includes(t)));
+  list.sort((x,y)=>(norm(x.a.fio).startsWith(q0)?0:1)-(norm(y.a.fio).startsWith(q0)?0:1)||String(x.a.fio).localeCompare(String(y.a.fio),"ru"));
+  if(!list.length){res.innerHTML=`<div class="empty"><strong>Никого не нашли по запросу «${esc(S.query.trim())}»</strong><span>Проверьте написание или введите только фамилию.</span></div>`;return;}
+  res.innerHTML=list.slice(0,300).map(({a})=>{
+    const ws=(byA.get(a.id)||[]).slice().sort((x,y)=>String(y.date||"").localeCompare(String(x.date||"")));
+    const lw=ws[0],tg=tgHandle(a.tg);
+    const sub=[a.grp,tg?"@"+tg:""].filter(Boolean).map(esc).join(" · ")||"&nbsp;";
+    return `<a class="row" href="#a-${esc(a.id)}">
+      <div class="avatar" aria-hidden="true">${esc(initials(a.fio))}</div>
+      <div style="min-width:0"><div class="name">${esc(a.fio)}</div><div class="sub">${sub}</div></div>
+      <div class="last">${lw?`<span class="pos">${esc(lw.position)}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
+      <div class="count">${ws.length?plural(ws.length,"мероприятие","мероприятия","мероприятий"):""}</div></a>`;}).join("")
+    +(list.length>300?`<p class="muted small">Показаны первые 300 из ${list.length}. Уточните запрос.</p>`:"");
+}
+
+/* ---------- activist ---------- */
+async function viewActivist(id){
+  $("#view").innerHTML=`<a class="back" href="#search">← К поиску</a><div class="skeleton"></div>`;
+  const [a,w,c]=await Promise.all([
+    S.sb.from("activists").select("*").eq("id",id).maybeSingle(),
+    S.sb.from("work").select("*").eq("activist_id",id).order("date",{ascending:false,nullsFirst:false}),
+    S.sb.from("comments").select("id,role,text,created_at,author_id,author:profiles(fio,role_title)").eq("activist_id",id).order("created_at",{ascending:false})
+  ]);
+  if(parseRoute().id!==id)return;
+  if(a.error||w.error||c.error){toast(errText(a.error||w.error||c.error),true);}
+  if(!a.data){$("#view").innerHTML=`<a class="back" href="#search">← К поиску</a><div class="empty"><strong>Карточка не найдена</strong><span>Возможно, активиста удалили из базы.</span></div>`;return;}
+  S.current={a:a.data,work:w.data||[],comments:c.data||[]};
+  if(!S.listLoaded)loadList();
+  renderActivist();
+}
+function renderActivist(){
+  const {a,work,comments}=S.current,id=a.id,ce=canEdit();
+  document.title=a.fio+" · Актив Горного";
+  const roles=[...new Set(work.map(w=>w.position))].slice(0,4),tg=tgHandle(a.tg);
+  const item=(label,html,copy)=>`<div><dt>${label}</dt><dd>${html||'<span class="muted">не указано</span>'}${html&&copy?`<button class="copy" type="button" data-copy="${esc(copy)}">копировать</button>`:""}</dd></div>`;
+  const myRole=COMMENT_ROLES.includes(S.me.role_title)?S.me.role_title:"ГО";
+  $("#view").innerHTML=`
+  <a class="back" href="#search">← К поиску</a>
+  <div class="person-head">
+    <div class="avatar lg" aria-hidden="true">${esc(initials(a.fio))}</div>
+    <div class="grow"><h1>${esc(a.fio)}</h1><div class="sub">${[a.grp,work.length?plural(work.length,"мероприятие","мероприятия","мероприятий"):"",roles.join(", ")].filter(Boolean).map(esc).join(" · ")}</div></div>
+    ${ce?`<div class="form-actions"><button class="btn" type="button" data-act="edit">Редактировать</button><button class="btn danger" type="button" data-act="del-activist">Удалить</button></div>`:""}
+  </div>
+  <div class="grid">
+    <section class="card"><h2>Личная информация</h2><dl class="contacts">
+      ${item("ФИО",esc(a.fio))}
+      ${item("Группа",esc(a.grp))}
+      ${item("Телефон",a.phone?`<a href="tel:${esc(String(a.phone).replace(/[^\d+]/g,""))}">${esc(a.phone)}</a>`:"",a.phone)}
+      ${item("Telegram",tg?`<a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:"",tg?"@"+tg:"")}
+      ${item("ВКонтакте",a.vk?`<a href="${esc(vkLink(a.vk))}" target="_blank" rel="noopener">${esc(vkLabel(a.vk))}</a>`:"",a.vk?vkLink(a.vk):"")}
+      ${item("Почта",a.email?`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`:"",a.email)}
+      ${a.about?item("О себе / навыки",esc(a.about)):""}
+    </dl><div class="muted small">Карточка обновлена ${esc(fmtTs(a.updated_at||a.created_at))}</div></section>
+    <div class="stack">
+      <section class="card">
+        <div class="card-h"><h2>Работа в активе</h2><span class="muted small">${work.length?plural(work.length,"запись","записи","записей"):""}</span></div>
+        ${work.length?`<div class="tablewrap"><table><thead><tr><th>Дата</th><th>Мероприятие</th><th>Должность</th><th>Заметка</th>${ce?"<th></th>":""}</tr></thead><tbody>
+        ${work.map(w=>`<tr><td class="date">${fmtDate(w.date)||"—"}</td><td>${esc(w.event)}</td><td><span class="tag">${esc(w.position)}</span></td><td class="muted">${esc(w.note)}</td>${ce?`<td class="act"><button class="btn danger" type="button" data-act="del-work" data-id="${esc(w.id)}">Удалить</button></td>`:""}</tr>`).join("")}
+        </tbody></table></div>`:`<p class="muted" style="margin:0">Пока нет записей о мероприятиях.</p>`}
+        ${ce?`<form class="subform" data-form="work">
+          <h3>Добавить должность на мероприятии</h3>
+          <div class="fields">
+            <label for="w-event">Мероприятие<input id="w-event" name="event" list="dl-events" required maxlength="300" placeholder="Посвящение в студенты 2026"></label>
+            <label for="w-pos">Должность<input id="w-pos" name="position" list="dl-positions" required maxlength="200" placeholder="Организатор"></label>
+            <label for="w-date">Дата<input id="w-date" name="date" type="date"></label>
+            <label for="w-note">Заметка<input id="w-note" name="note" maxlength="500" placeholder="Отвечал за регистрацию гостей"></label>
+          </div>
+          <div class="form-actions"><button class="btn primary" type="submit">Добавить запись</button></div>
+        </form>`:""}
+      </section>
+      <section class="card">
+        <h2>Комментарии ГО, кураторов и капитанов</h2>
+        ${comments.length?`<div class="comments">${comments.map(c=>{const cls=roleCls(c.role);const mine=c.author_id===S.me.id;
+          return `<div class="comment ${cls}"><div class="comment-h"><span class="tag ${cls}">${esc(c.role)}</span><span class="who">${esc((c.author&&c.author.fio)||"Удалённый пользователь")}</span><span class="when">${esc(fmtTs(c.created_at))}</span>${(isAdmin()||(mine&&ce))?`<button class="btn danger" type="button" data-act="del-comment" data-id="${esc(c.id)}">Удалить</button>`:""}</div><p>${esc(c.text)}</p></div>`;}).join("")}</div>`:`<p class="muted" style="margin:0">Комментариев пока нет.</p>`}
+        ${ce?`<form class="subform" data-form="comment">
+          <h3>Оставить комментарий</h3>
+          <div class="fields">
+            <label for="c-role">От кого<select id="c-role" name="role">${COMMENT_ROLES.map(r=>`<option${r===myRole?" selected":""}>${r}</option>`).join("")}</select></label>
+            <label class="full" for="c-text">Комментарий<textarea id="c-text" name="text" required maxlength="5000" placeholder="Ответственный, хорошо держит команду. Рекомендую на должность капитана."></textarea></label>
+          </div>
+          <div class="form-actions"><button class="btn primary" type="submit">Опубликовать</button></div>
+        </form>`:""}
+      </section>
+    </div>
+  </div>`;
+}
+async function refreshActivist(){if(S.current){S.listLoaded=false;await viewActivist(S.current.a.id);}}
+
+/* ---------- profile ---------- */
+function viewProfile(){
+  document.title="Мой профиль · Актив Горного";
+  const p=S.me,a=ACCESS[p.access]||["",""];
+  $("#view").innerHTML=`<section><h1>Мой профиль</h1><p class="lede">Эти данные видят администратор и другие пользователи базы. ФИО стоит под вашими комментариями.</p></section>
+  <section class="card"><div class="card-h"><h2>${esc(p.email||"")}</h2><span class="chip ${a[1]}">${esc(a[0])}</span></div>
+  <form data-form="profile"><div class="fields">
+    <label class="full" for="p-fio">ФИО<input id="p-fio" name="fio" required maxlength="200" value="${esc(p.fio)}"></label>
+    <label for="p-role">Кто вы<select id="p-role" name="role_title">${USER_ROLES.map(r=>`<option${p.role_title===r?" selected":""}>${r}</option>`).join("")}</select></label>
+    <label for="p-phone">Телефон<input id="p-phone" name="phone" type="tel" maxlength="50" value="${esc(p.phone)}"></label>
+    <label for="p-tg">Telegram<input id="p-tg" name="tg" maxlength="100" value="${esc(p.tg)}"></label>
+    <label for="p-dir">Направление / мероприятие<input id="p-dir" name="direction" maxlength="300" value="${esc(p.direction)}"></label>
+  </div><div class="form-actions"><button class="btn primary" type="submit">Сохранить</button></div></form></section>`;
+}
+
+/* ---------- users (admin) ---------- */
+async function viewUsers(){
+  document.title="Пользователи · Актив Горного";
+  $("#view").innerHTML=`<section><h1>Пользователи</h1><p class="lede">Подтверждайте заявки и выбирайте уровень доступа. «Просмотр»: поиск и карточки. «Редактор»: может добавлять и менять данные. «Администратор»: ещё и управляет доступом.</p></section>
+  <section class="card" id="users-card"><div class="skeleton"></div></section>`;
+  const {data,error}=await S.sb.from("profiles").select("*").order("created_at",{ascending:false});
+  if(error){toast(errText(error),true);return;}
+  const order={pending:0,editor:1,admin:1,viewer:2,blocked:3};
+  const list=(data||[]).sort((x,y)=>(order[x.access]??9)-(order[y.access]??9));
+  const pend=list.filter(u=>u.access==="pending").length;
+  $("#users-card").innerHTML=`<div class="card-h"><h2>Все пользователи</h2><span class="muted small">${pend?plural(pend,"заявка ждёт","заявки ждут","заявок ждут")+" подтверждения":"новых заявок нет"}</span></div>
+  ${list.length?`<div class="tablewrap"><table><thead><tr><th>ФИО</th><th>Кто</th><th>Контакты</th><th>Направление</th><th>Доступ</th></tr></thead><tbody>
+  ${list.map(u=>{const tg=tgHandle(u.tg);const self=u.id===S.me.id;
+    return `<tr><td><b>${esc(u.fio||"Без имени")}</b><div class="sub">${esc(u.email)} · ${esc(fmtTs(u.created_at))}</div></td>
+    <td><span class="tag ${roleCls(u.role_title)}">${esc(u.role_title)}</span></td>
+    <td class="small">${esc(u.phone)}${tg?`<br><a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:""}</td>
+    <td class="small">${esc(u.direction)}</td>
+    <td>${self?`<span class="chip acc">Это вы</span>`:`<select class="access" data-user="${esc(u.id)}" aria-label="Доступ для ${esc(u.fio)}">${Object.entries(ACCESS).map(([k,v])=>`<option value="${k}"${u.access===k?" selected":""}>${v[0]}</option>`).join("")}</select>`}</td></tr>`;}).join("")}
+  </tbody></table></div>`:`<p class="muted">Пользователей пока нет.</p>`}`;
+}
+document.addEventListener("change",async e=>{
+  const s=e.target.closest("select.access");if(!s)return;
+  s.disabled=true;
+  const {error}=await S.sb.rpc("set_access",{target:s.dataset.user,new_access:s.value});
+  if(error){toast(errText(error),true);}else toast("Доступ изменён: "+ACCESS[s.value][0]);
+  viewUsers();
+});
+
+/* ---------- dialogs ---------- */
+function openDialog(html){$("#dialog").innerHTML=html;$("#overlay").hidden=false;const f=$("#dialog input,#dialog textarea,#dialog button.primary");if(f)setTimeout(()=>f.focus(),0);}
+function closeDialog(){$("#overlay").hidden=true;$("#dialog").innerHTML="";}
+$("#overlay").addEventListener("click",e=>{if(e.target.id==="overlay")closeDialog();});
+addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#overlay").hidden){if(confirmResolve){const r=confirmResolve;confirmResolve=null;r(false);}closeDialog();}});
+let confirmResolve=null;
+function confirmBox(title,text,ok){return new Promise(res=>{confirmResolve=res;openDialog(`<h2 id="dlg-title">${esc(title)}</h2><p class="muted" style="margin:0">${esc(text)}</p><div class="form-actions"><button class="btn primary" type="button" data-act="confirm-yes">${esc(ok)}</button><button class="btn" type="button" data-act="confirm-no">Отмена</button></div>`);});}
+function activistForm(a){
+  a=a||{};
+  openDialog(`<h2 id="dlg-title">${a.id?"Редактировать карточку":"Новый активист"}</h2>
+  <form data-form="activist" data-id="${esc(a.id||"")}"><div class="fields">
+    <label class="full" for="f-fio">ФИО<input id="f-fio" name="fio" required maxlength="200" value="${esc(a.fio)}" placeholder="Иванова Мария Андреевна"></label>
+    <label for="f-grp">Группа<input id="f-grp" name="grp" maxlength="50" value="${esc(a.grp)}" placeholder="ГГ-24-1"></label>
+    <label for="f-phone">Телефон<input id="f-phone" name="phone" type="tel" maxlength="50" value="${esc(a.phone)}" placeholder="+7 900 000-00-00"></label>
+    <label for="f-tg">Telegram<input id="f-tg" name="tg" maxlength="100" value="${esc(a.tg)}" placeholder="@nickname"></label>
+    <label for="f-vk">ВКонтакте<input id="f-vk" name="vk" maxlength="200" value="${esc(a.vk)}" placeholder="vk.com/id123"></label>
+    <label class="full" for="f-email">Почта<input id="f-email" name="email" type="email" maxlength="200" value="${esc(a.email)}" placeholder="name@mail.ru"></label>
+    <label class="full" for="f-about">О себе / навыки<textarea id="f-about" name="about" maxlength="2000" placeholder="Умеет вести мероприятия, есть фотоаппарат">${esc(a.about)}</textarea></label>
+  </div>
+  <p class="formerr" id="dlg-err"></p>
+  <div class="form-actions"><button class="btn primary" type="submit">${a.id?"Сохранить":"Добавить в базу"}</button><button class="btn" type="button" data-act="close">Отмена</button></div></form>`);
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click",async e=>{
+  const tab=e.target.closest("[data-tab]");if(tab){authTab=tab.dataset.tab;viewAuth();return;}
+  const b=e.target.closest("[data-act],[data-copy]");if(!b)return;
+  if(b.dataset.copy!==undefined){try{await navigator.clipboard.writeText(b.dataset.copy);toast("Скопировано");}catch(err){toast("Не удалось скопировать",true);}return;}
+  const act=b.dataset.act,id=b.dataset.id;
+  if(act==="close")return closeDialog();
+  if(act==="confirm-yes"||act==="confirm-no"){const r=confirmResolve;confirmResolve=null;closeDialog();if(r)r(act==="confirm-yes");return;}
+  if(act==="logout"){await S.sb.auth.signOut();S.session=null;S.me=null;S.listLoaded=false;location.hash="";route();return;}
+  if(act==="recheck"){b.disabled=true;await loadMe();route();if(!canView())toast("Доступ пока не выдан");return;}
+  if(act==="new")return activistForm(null);
+  if(act==="edit")return activistForm(S.current&&S.current.a);
+  if(act==="del-activist"){
+    const a=S.current&&S.current.a;if(!a)return;
+    if(!await confirmBox("Удалить карточку?",`${a.fio}, все записи о мероприятиях и комментарии будут удалены без возможности восстановления.`,"Удалить навсегда"))return;
+    const {error}=await S.sb.from("activists").delete().eq("id",a.id);
+    if(error)return toast(errText(error),true);
+    toast("Карточка удалена");S.listLoaded=false;location.hash="search";return;
+  }
+  if(act==="del-work"){if(!await confirmBox("Удалить запись?","Запись о мероприятии исчезнет из карточки.","Удалить"))return;
+    const {error}=await S.sb.from("work").delete().eq("id",id);if(error)return toast(errText(error),true);toast("Запись удалена");refreshActivist();return;}
+  if(act==="del-comment"){if(!await confirmBox("Удалить комментарий?","Комментарий исчезнет из карточки.","Удалить"))return;
+    const {error}=await S.sb.from("comments").delete().eq("id",id);if(error)return toast(errText(error),true);toast("Комментарий удалён");refreshActivist();return;}
+});
+
+document.addEventListener("submit",async e=>{
+  const f=e.target.closest("form[data-form]");if(!f)return;e.preventDefault();
+  const fd=Object.fromEntries(new FormData(f).entries());for(const k in fd)fd[k]=String(fd[k]).trim();
+  const btn=f.querySelector("button[type=submit]");if(btn)btn.disabled=true;
+  const setErr=(sel,msg)=>{const el=$(sel);if(el)el.textContent=msg;else toast(msg,true);};
+  try{
+    const kind=f.dataset.form;
+    if(kind==="login"){
+      const {error}=await S.sb.auth.signInWithPassword({email:fd.email,password:fd.password});
+      if(error)return setErr("#auth-err",errText(error));
+      const {data}=await S.sb.auth.getSession();S.session=data.session;await loadMe();location.hash="search";route();
+    }
+    else if(kind==="signup"){
+      if(!fd.fio)return setErr("#auth-err","Укажите ФИО.");
+      const {data,error}=await S.sb.auth.signUp({email:fd.email,password:fd.password,options:{data:{fio:fd.fio,role_title:fd.role_title,phone:fd.phone,tg:fd.tg,direction:fd.direction}}});
+      if(error)return setErr("#auth-err",errText(error));
+      if(!data.session){authTab="login";viewAuth();toast("Проверьте почту: пришло письмо со ссылкой для подтверждения. Потом войдите.");return;}
+      S.session=data.session;await loadMe();route();toast("Заявка отправлена");
+    }
+    else if(kind==="profile"){
+      if(!fd.fio)return toast("Укажите ФИО",true);
+      const upd={fio:fd.fio,role_title:fd.role_title,phone:fd.phone,tg:fd.tg,direction:fd.direction};
+      const {error}=await S.sb.from("profiles").update(upd).eq("id",S.me.id);
+      if(error)return toast(errText(error),true);
+      await loadMe();toast("Профиль сохранён");route();
+    }
+    else if(kind==="activist"){
+      if(!fd.fio)return setErr("#dlg-err","Укажите ФИО.");
+      const row={fio:fd.fio,grp:fd.grp,phone:fd.phone,tg:fd.tg,vk:fd.vk,email:fd.email,about:fd.about,updated_at:new Date().toISOString()};
+      const id=f.dataset.id;
+      if(id){
+        const {error}=await S.sb.from("activists").update(row).eq("id",id);
+        if(error)return setErr("#dlg-err",errText(error));
+        closeDialog();toast("Карточка сохранена");refreshActivist();
+      }else{
+        const {data,error}=await S.sb.from("activists").insert({...row,created_by:S.me.id}).select("id").single();
+        if(error)return setErr("#dlg-err",errText(error));
+        closeDialog();toast("Активист добавлен");S.listLoaded=false;location.hash="a-"+data.id;
+      }
+    }
+    else if(kind==="work"){
+      if(!fd.event||!fd.position)return toast("Заполните мероприятие и должность",true);
+      const {error}=await S.sb.from("work").insert({activist_id:S.current.a.id,event:fd.event,position:fd.position,date:fd.date||null,note:fd.note||"",added_by:S.me.id});
+      if(error)return toast(errText(error),true);
+      toast("Запись добавлена");refreshActivist();
+    }
+    else if(kind==="comment"){
+      if(!fd.text)return toast("Напишите комментарий",true);
+      const {error}=await S.sb.from("comments").insert({activist_id:S.current.a.id,role:fd.role||"Другое",text:fd.text,author_id:S.me.id});
+      if(error)return toast(errText(error),true);
+      toast("Комментарий опубликован");refreshActivist();
+    }
+  }catch(err){toast(errText(err),true);}
+  finally{if(btn&&btn.isConnected)btn.disabled=false;}
+});
+
+boot().catch(err=>{toast(errText(err),true);});
+</script>
+</body>
+</html>

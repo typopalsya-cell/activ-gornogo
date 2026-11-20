@@ -256,6 +256,17 @@ const TEAM_KEYS=Object.keys(TEAMS);
 // Старые названия должностей (из первой версии сайта) -> команда
 const LEGACY_POS={"Главный организатор":"Организаторы","Ответственный за площадку":"Организаторы","Регистрация":"Волонтёры","Видеограф":"Медиа"};
 const POS2TEAM={...LEGACY_POS};TEAM_KEYS.forEach(k=>TEAMS[k].pos.forEach(p=>{POS2TEAM[p]=k;}));
+// Какие функции подразумевает должность: «Фотограф» всегда значит «Фотосъёмка» и т.д.
+// Используется в фильтре по функции и в «Опыте по функциям», а в форме ставит галочки сама.
+const POS_FN={
+  "Фотограф":["Фотосъёмка"],"Видеограф":["Видеосъёмка"],"Монтажёр":["Монтаж видео"],
+  "Дизайнер":["Дизайн афиш и постов"],"SMM":["Ведение соцсетей"],"Копирайтер":["Тексты и посты"],
+  "Ведущий":["Ведение мероприятия"],"Техническая группа":["Звук, свет, техника"],
+  "Капитан команды":["Руководство командой"],"ГО":["Руководство командой"],"Главный организатор":["Руководство командой"],
+  "Регистрация":["Регистрация гостей"]
+};
+// Функции записи: отмеченные + подразумеваемые должностью
+const fnsOf=w=>[...new Set([...((w&&w.functions)||[]),...(POS_FN[w&&w.position]||[])])];
 // Команда записи: указанная, а для старых записей — по должности
 const teamOf=w=>(w&&(w.team||POS2TEAM[w.position]))||"";
 const COMMENT_ROLES=["ГО","Куратор","Капитан","Другое"];
@@ -293,7 +304,7 @@ function errText(e){
   return m||"Что-то пошло не так. Попробуйте ещё раз.";
 }
 // подсчёт функций по записям участия: [["Фотосъёмка",3],...]
-function skillCounts(works){const m=new Map();for(const w of works)for(const f of (w.functions||[]))m.set(f,(m.get(f)||0)+1);return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ru"));}
+function skillCounts(works){const m=new Map();for(const w of works)for(const f of fnsOf(w))m.set(f,(m.get(f)||0)+1);return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ru"));}
 
 /* ---------- state ---------- */
 const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",fTeam:"",fPos:"",fFn:"",current:null};
@@ -440,7 +451,7 @@ function filterGroups(kind){
   const extra=new Set();
   for(const w of S.work){
     if(S.fTeam&&teamOf(w)!==S.fTeam)continue;
-    const vals=kind==="pos"?[w.position]:(w.functions||[]);
+    const vals=kind==="pos"?[w.position]:fnsOf(w);
     for(const v of vals)if(v&&!known.has(v)){
       const t=kind==="pos"?POS2TEAM[v]:"";
       const g=t&&groups.find(x=>x[0]===t);
@@ -497,9 +508,9 @@ function renderResults(){
   const n=S.activists.length;
   const byA=new Map();for(const w of S.work){if(!byA.has(w.activist_id))byA.set(w.activist_id,[]);byA.get(w.activist_id).push(w);}
   const toks=norm(S.query).split(" ").filter(Boolean),q0=toks[0]||"";
-  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>[w.position,...(w.functions||[])])].join(" "))};});
+  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>[w.position,...fnsOf(w)])].join(" "))};});
   if(toks.length)list=list.filter(x=>toks.every(t=>x.hay.includes(t)));
-  const match=w=>(!S.fTeam||teamOf(w)===S.fTeam)&&(!S.fPos||w.position===S.fPos)&&(!S.fFn||(w.functions||[]).includes(S.fFn));
+  const match=w=>(!S.fTeam||teamOf(w)===S.fTeam)&&(!S.fPos||w.position===S.fPos)&&(!S.fFn||fnsOf(w).includes(S.fFn));
   const filtering=S.fTeam||S.fPos||S.fFn;
   if(filtering)list=list.filter(x=>x.ws.some(match));
   const fnCount=x=>filtering?x.ws.filter(match).length:0;
@@ -676,6 +687,10 @@ function workForm(w){
   });
   $("#w-poss").addEventListener("change",e=>{
     if(e.target.name!=="pos")return;
+    for(const f of (POS_FN[e.target.value]||[])){
+      const box=[...document.querySelectorAll('#w-fns input[name="fn"]')].find(x=>x.value===f);
+      if(box)box.checked=true;
+    }
     const other=$("#w-pos-other");if(!other)return;
     other.hidden=e.target.value!=="__other";if(!other.hidden)other.focus();
   });

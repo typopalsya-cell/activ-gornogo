@@ -232,7 +232,6 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 <main id="view"><div class="skeleton"></div></main>
 
 <datalist id="dl-events"></datalist>
-<datalist id="dl-positions"></datalist>
 <div id="overlay" class="overlay" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" id="dialog"></div></div>
 <div id="toast" class="toast" role="status" hidden></div>
 
@@ -244,16 +243,21 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 // Команды, их должности и функции. Список можно дополнять: просто добавьте строку в нужный массив.
 const TEAMS={
   "Организаторы":{cls:"team-org",
-    pos:["ГО","Организатор","Капитан команды","Куратор","Ответственный за блок"],
+    pos:["ГО","Организатор","Капитан команды","Куратор","Ответственный за блок","Ведущий","Техническая группа"],
     fn:["Сценарий и тайминг","Координация площадки","Регистрация участников","Работа с участниками","Логистика и закупки","Работа с партнёрами","Звук, свет, техника","Ведение мероприятия","Руководство командой","Реквизит и декорации","Документы и согласования","Бюджет"]},
   "Медиа":{cls:"team-media",
     pos:["Руководитель медиа","Фотограф","Видеограф","Монтажёр","Дизайнер","SMM","Копирайтер"],
     fn:["Фотосъёмка","Обработка фото","Видеосъёмка","Монтаж видео","Дизайн афиш и постов","Тексты и посты","Ведение соцсетей","Сторис и репортаж онлайн","Интервью","Анонс мероприятия"]},
   "Волонтёры":{cls:"team-vol",
-    pos:["Волонтёр","Старший волонтёр"],
+    pos:["Волонтёр","Старший волонтёр","Хелпер","Аниматор"],
     fn:["Встреча и навигация гостей","Регистрация гостей","Работа на станции / точке","Монтаж и демонтаж площадки","Раздача материалов","Сопровождение гостей и спикеров","Дежурство и порядок","Помощь организаторам","Фотозона и интерактив"]}
 };
 const TEAM_KEYS=Object.keys(TEAMS);
+// Старые названия должностей (из первой версии сайта) -> команда
+const LEGACY_POS={"Главный организатор":"Организаторы","Ответственный за площадку":"Организаторы","Регистрация":"Волонтёры","Видеограф":"Медиа"};
+const POS2TEAM={...LEGACY_POS};TEAM_KEYS.forEach(k=>TEAMS[k].pos.forEach(p=>{POS2TEAM[p]=k;}));
+// Команда записи: указанная, а для старых записей — по должности
+const teamOf=w=>(w&&(w.team||POS2TEAM[w.position]))||"";
 const COMMENT_ROLES=["ГО","Куратор","Капитан","Другое"];
 const USER_ROLES=["Активист","ГО","Куратор","Капитан","Другое"];
 const ACCESS={pending:["Ждёт подтверждения","wait"],activist:["Активист",""],viewer:["Просмотр",""],editor:["Редактор","ok"],admin:["Администратор","acc"],blocked:["Доступ закрыт","bad"]};
@@ -292,7 +296,7 @@ function errText(e){
 function skillCounts(works){const m=new Map();for(const w of works)for(const f of (w.functions||[]))m.set(f,(m.get(f)||0)+1);return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ru"));}
 
 /* ---------- state ---------- */
-const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",fTeam:"",fFn:"",current:null};
+const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",fTeam:"",fPos:"",fFn:"",current:null};
 const access=()=>S.me&&S.me.access;
 const canView=()=>["viewer","editor","admin"].includes(access());
 const canEdit=()=>["editor","admin"].includes(access());
@@ -415,8 +419,7 @@ function fillDatalists(works){
   const evs=[...new Set((works||[]).map(x=>x.event).filter(Boolean))].sort((x,y)=>x.localeCompare(y,"ru"));
   $("#dl-events").innerHTML=evs.map(e=>`<option value="${esc(e)}">`).join("");
 }
-function positionsFor(team){const base=team&&TEAMS[team]?TEAMS[team].pos:TEAM_KEYS.flatMap(k=>TEAMS[k].pos);
-  const extra=S.work.filter(w=>!team||w.team===team).map(w=>w.position).filter(Boolean);return [...new Set([...base,...extra])];}
+
 
 /* ---------- search ---------- */
 async function loadList(force){
@@ -429,8 +432,35 @@ async function loadList(force){
   S.activists=a.data||[];S.work=w.data||[];S.listLoaded=true;
   fillDatalists(S.work);
 }
-function fnOptions(selected){
-  return TEAM_KEYS.map(k=>`<optgroup label="${esc(k)}">${TEAMS[k].fn.map(f=>`<option${f===selected?" selected":""}>${esc(f)}</option>`).join("")}</optgroup>`).join("");
+// Варианты фильтра: справочник выбранной команды (или всех) + то, что реально есть в базе
+function filterGroups(kind){
+  const keys=S.fTeam?[S.fTeam]:TEAM_KEYS;
+  const groups=keys.map(k=>[k,[...TEAMS[k][kind]]]);
+  const known=new Set(groups.flatMap(g=>g[1]));
+  const extra=new Set();
+  for(const w of S.work){
+    if(S.fTeam&&teamOf(w)!==S.fTeam)continue;
+    const vals=kind==="pos"?[w.position]:(w.functions||[]);
+    for(const v of vals)if(v&&!known.has(v)){
+      const t=kind==="pos"?POS2TEAM[v]:"";
+      const g=t&&groups.find(x=>x[0]===t);
+      if(g){g[1].push(v);known.add(v);}else extra.add(v);
+    }
+  }
+  if(extra.size)groups.push(["Другие",[...extra].sort((a,b)=>a.localeCompare(b,"ru"))]);
+  return groups;
+}
+function optionsHTML(kind,selected){
+  return filterGroups(kind).map(([k,list])=>`<optgroup label="${esc(k)}">${list.map(v=>`<option${v===selected?" selected":""}>${esc(v)}</option>`).join("")}</optgroup>`).join("");
+}
+function renderFilterSelects(){
+  const fp=$("#f-pos"),ff=$("#f-fn");if(!fp||!ff)return;
+  // если выбранное значение не подходит к новой команде — сбрасываем
+  const has=(kind,v)=>!v||filterGroups(kind).some(g=>g[1].includes(v));
+  if(!has("pos",S.fPos))S.fPos="";
+  if(!has("fn",S.fFn))S.fFn="";
+  fp.innerHTML=`<option value="">Любая должность</option>${optionsHTML("pos",S.fPos)}`;
+  ff.innerHTML=`<option value="">Любая функция</option>${optionsHTML("fn",S.fFn)}`;
 }
 async function viewSearch(){
   document.title="База активистов Горного";
@@ -444,7 +474,8 @@ async function viewSearch(){
     </div>
     <div class="filters">
       <select id="f-team" aria-label="Команда"><option value="">Все команды</option>${TEAM_KEYS.map(k=>`<option${S.fTeam===k?" selected":""}>${esc(k)}</option>`).join("")}</select>
-      <select id="f-fn" aria-label="Функция"><option value="">Любая функция</option>${fnOptions(S.fFn)}</select>
+      <select id="f-pos" aria-label="Должность"><option value="">Любая должность</option></select>
+      <select id="f-fn" aria-label="Функция"><option value="">Любая функция</option></select>
       <button class="btn ghost" type="button" data-act="reset-filters">Сбросить</button>
     </div>
     <div class="meta-row"><span id="stats" class="muted small"></span>${canEdit()?`<button class="btn primary" type="button" data-act="new">+ Добавить активиста</button>`:""}</div>
@@ -453,10 +484,12 @@ async function viewSearch(){
   const q=$("#q");q.value=S.query;
   q.addEventListener("input",()=>{S.query=q.value;renderResults();});
   q.addEventListener("keydown",e=>{if(e.key==="Enter"){const f=$("#results a.row");if(f)location.hash=f.getAttribute("href").slice(1);}});
-  $("#f-team").addEventListener("change",e=>{S.fTeam=e.target.value;renderResults();});
+  $("#f-team").addEventListener("change",e=>{S.fTeam=e.target.value;renderFilterSelects();renderResults();});
+  $("#f-pos").addEventListener("change",e=>{S.fPos=e.target.value;renderResults();});
   $("#f-fn").addEventListener("change",e=>{S.fFn=e.target.value;renderResults();});
   setTimeout(()=>q.focus(),0);
   await loadList();
+  renderFilterSelects();
   renderResults();
 }
 function renderResults(){
@@ -464,11 +497,12 @@ function renderResults(){
   const n=S.activists.length;
   const byA=new Map();for(const w of S.work){if(!byA.has(w.activist_id))byA.set(w.activist_id,[]);byA.get(w.activist_id).push(w);}
   const toks=norm(S.query).split(" ").filter(Boolean),q0=toks[0]||"";
-  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>w.functions||[])].join(" "))};});
+  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>[w.position,...(w.functions||[])])].join(" "))};});
   if(toks.length)list=list.filter(x=>toks.every(t=>x.hay.includes(t)));
-  if(S.fTeam)list=list.filter(x=>x.ws.some(w=>w.team===S.fTeam));
-  if(S.fFn)list=list.filter(x=>x.ws.some(w=>(w.functions||[]).includes(S.fFn)));
-  const fnCount=x=>S.fFn?x.ws.filter(w=>(w.functions||[]).includes(S.fFn)).length:0;
+  const match=w=>(!S.fTeam||teamOf(w)===S.fTeam)&&(!S.fPos||w.position===S.fPos)&&(!S.fFn||(w.functions||[]).includes(S.fFn));
+  const filtering=S.fTeam||S.fPos||S.fFn;
+  if(filtering)list=list.filter(x=>x.ws.some(match));
+  const fnCount=x=>filtering?x.ws.filter(match).length:0;
   list.sort((x,y)=>fnCount(y)-fnCount(x)||(norm(x.a.fio).startsWith(q0)?0:1)-(norm(y.a.fio).startsWith(q0)?0:1)||String(x.a.fio).localeCompare(String(y.a.fio),"ru"));
   $("#stats").textContent=`Найдено ${list.length} из ${plural(n,"активиста","активистов","активистов")}`;
   if(!n){res.innerHTML=`<div class="empty"><strong>База пока пустая</strong><span>${canEdit()?"Добавьте первого активиста кнопкой выше или пригласите активистов зарегистрироваться самим.":"Активистов добавляют редакторы."}</span></div>`;return;}
@@ -481,7 +515,7 @@ function renderResults(){
     return `<a class="row" href="#a-${esc(a.id)}">
       <div class="avatar" aria-hidden="true">${esc(initials(a.fio))}</div>
       <div style="min-width:0"><div class="name">${esc(a.fio)}</div><div class="sub">${sub}</div>${top?`<div class="mini-fn">${top}</div>`:""}</div>
-      <div class="last">${lw?`<span class="pos">${esc(lw.position)}${lw.team?" · "+esc(lw.team):""}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
+      <div class="last">${lw?`<span class="pos">${esc(lw.position)}${teamOf(lw)?" · "+esc(teamOf(lw)):""}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
       <div class="count">${ws.length?plural(ws.length,"мероприятие","мероприятия","мероприятий"):""}</div></a>`;}).join("")
     +(list.length>300?`<p class="muted small">Показаны первые 300 из ${list.length}. Уточните запрос.</p>`:"");
 }
@@ -519,7 +553,7 @@ function entryHTML(w,p){
     <div class="entry-h">
       <span class="ev-name">${esc(w.event)}</span>
       <span class="when">${fmtDate(w.date)||"дата не указана"}</span>
-      ${w.team?`<span class="tag ${teamCls(w.team)}">${esc(w.team)}</span>`:""}
+      ${teamOf(w)?`<span class="tag ${teamCls(teamOf(w))}">${esc(teamOf(w))}</span>`:""}
       <span class="tag pos">${esc(w.position)}</span>
       ${p.editEntry||canDel?`<span class="acts">${p.editEntry?`<button class="btn ghost" type="button" data-act="edit-work" data-id="${esc(w.id)}">Изменить</button>`:""}${canDel?`<button class="btn danger" type="button" data-act="del-work" data-id="${esc(w.id)}">Удалить</button>`:""}</span>`:""}
     </div>
@@ -543,7 +577,7 @@ function renderActivist(){
   const {a,work,comments,mine}=S.current,p=perms();
   if(!mine)document.title=a.fio+" · Актив Горного";
   const tg=tgHandle(a.tg),skills=skillCounts(work);
-  const teams=[...new Set(work.map(w=>w.team).filter(Boolean))];
+  const teams=[...new Set(work.map(teamOf).filter(Boolean))];
   const item=(label,html,copy)=>`<div><dt>${label}</dt><dd>${html||'<span class="muted">не указано</span>'}${html&&copy?`<button class="copy" type="button" data-copy="${esc(copy)}">копировать</button>`:""}</dd></div>`;
   const myRole=COMMENT_ROLES.includes(S.me.role_title)?S.me.role_title:"ГО";
   const reviewed=work.filter(w=>w.go_review).length;
@@ -602,17 +636,30 @@ function checksHTML(team,checked){
   const list=[...TEAMS[team].fn,...[...set].filter(f=>!TEAMS[team].fn.includes(f))];
   return `<div class="checks">${list.map((f,i)=>`<label class="check" for="fn-${i}"><input type="checkbox" id="fn-${i}" name="fn" value="${esc(f)}"${set.has(f)?" checked":""}><span>${esc(f)}</span></label>`).join("")}</div>`;
 }
+// Должности команды кнопками; «Другая» — для редких случаев, со своим текстом
+function posHTML(team,current){
+  if(!team)return `<p class="hint">Сначала выберите команду.</p>`;
+  const list=TEAMS[team].pos,custom=current&&!list.includes(current);
+  return `<div class="checks">${list.map((p,i)=>`<label class="check" for="pos-${i}"><input type="radio" id="pos-${i}" name="pos" value="${esc(p)}"${p===current?" checked":""}><span>${esc(p)}</span></label>`).join("")}
+    <label class="check" for="pos-other"><input type="radio" id="pos-other" name="pos" value="__other"${custom?" checked":""}><span>Другая…</span></label></div>
+    <input id="w-pos-other" maxlength="200" placeholder="Напишите должность" value="${custom?esc(current):""}"${custom?"":" hidden"} aria-label="Другая должность" style="margin-top:8px">`;
+}
+function currentPos(){
+  const r=document.querySelector('#w-poss input[name="pos"]:checked');if(!r)return "";
+  if(r.value==="__other")return (($("#w-pos-other")||{}).value||"").trim();
+  return r.value;
+}
 function workForm(w){
   const p=perms();w=w||{};
-  const team=w.team||"";
+  const team=teamOf(w);
   openDialog(`<h2 id="dlg-title">${w.id?"Изменить участие":"Добавить участие"}</h2>
   <form data-form="work" data-id="${esc(w.id||"")}">
     <div class="fields">
       <label class="full" for="w-event">Мероприятие<input id="w-event" name="event" list="dl-events" required maxlength="300" value="${esc(w.event)}" placeholder="Посвящение в студенты 2026"></label>
       <label for="w-date">Дата<input id="w-date" name="date" type="date" value="${esc(w.date||"")}"></label>
-      <label for="w-pos">Должность<input id="w-pos" name="position" list="dl-positions" required maxlength="200" value="${esc(w.position)}" placeholder="Фотограф"></label>
     </div>
     <fieldset><legend>Команда</legend><div class="checks" id="w-teams">${TEAM_KEYS.map((k,i)=>`<label class="check" for="team-${i}"><input type="radio" id="team-${i}" name="team" value="${esc(k)}" required${team===k?" checked":""}><span>${esc(k)}</span></label>`).join("")}</div></fieldset>
+    <fieldset><legend>Должность</legend><div id="w-poss">${posHTML(team,w.position)}</div></fieldset>
     <fieldset><legend>Что делал(а) — отметьте всё подходящее</legend><div id="w-fns">${checksHTML(team,w.functions)}</div></fieldset>
     <label for="w-note">Другое, если нет в списке<input id="w-note" name="note" maxlength="500" value="${esc(w.note)}" placeholder="Например: вёл квиз для первокурсников"></label>
     ${!w.id&&p.writeSelf?`<label for="w-self">Пара слов о своей работе (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
@@ -620,13 +667,17 @@ function workForm(w){
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">${w.id?"Сохранить":"Добавить"}</button><button class="btn" type="button" data-act="close">Отмена</button></div>
   </form>`,true);
-  const dl=$("#dl-positions");
-  const setPos=t=>{dl.innerHTML=positionsFor(t).map(x=>`<option value="${esc(x)}">`).join("");};
-  setPos(team);
   $("#w-teams").addEventListener("change",e=>{
     const t=e.target.value;
     const kept=[...document.querySelectorAll('#w-fns input[name="fn"]:checked')].map(x=>x.value);
-    $("#w-fns").innerHTML=checksHTML(t,kept);setPos(t);
+    const pos=currentPos();
+    $("#w-fns").innerHTML=checksHTML(t,kept);
+    $("#w-poss").innerHTML=posHTML(t,TEAMS[t].pos.includes(pos)?pos:"");
+  });
+  $("#w-poss").addEventListener("change",e=>{
+    if(e.target.name!=="pos")return;
+    const other=$("#w-pos-other");if(!other)return;
+    other.hidden=e.target.value!=="__other";if(!other.hidden)other.focus();
   });
 }
 function reviewForm(id,kind){
@@ -718,7 +769,7 @@ document.addEventListener("click",async e=>{
   if(act==="confirm-yes"||act==="confirm-no"){const r=confirmResolve;confirmResolve=null;closeDialog();if(r)r(act==="confirm-yes");return;}
   if(act==="logout"){await S.sb.auth.signOut();S.session=null;S.me=null;S.listLoaded=false;location.hash="";route();return;}
   if(act==="recheck"){b.disabled=true;await loadMe();route();if(!canView()&&!isActivist())toast("Доступ пока не выдан");return;}
-  if(act==="reset-filters"){S.fTeam="";S.fFn="";S.query="";viewSearch();return;}
+  if(act==="reset-filters"){S.fTeam="";S.fPos="";S.fFn="";S.query="";viewSearch();return;}
   if(act==="new")return activistForm(null);
   if(act==="edit")return activistForm(S.current&&S.current.a);
   if(act==="add-work")return workForm(null);
@@ -783,9 +834,10 @@ document.addEventListener("submit",async e=>{
       const functions=[...f.querySelectorAll('input[name="fn"]:checked')].map(x=>x.value);
       if(!fd.event)return setErr("#dlg-err","Укажите мероприятие.");
       if(!team)return setErr("#dlg-err","Выберите команду.");
-      if(!fd.position)return setErr("#dlg-err","Укажите должность.");
+      const position=currentPos();
+      if(!position)return setErr("#dlg-err","Выберите должность (или «Другая…» и впишите её).");
       if(!functions.length&&!fd.note)return setErr("#dlg-err","Отметьте хотя бы одну функцию или напишите, что делали, в поле «Другое».");
-      const row={event:fd.event,date:fd.date||null,team,position:fd.position,functions,note:fd.note||""};
+      const row={event:fd.event,date:fd.date||null,team,position,functions,note:fd.note||""};
       const id=f.dataset.id;let error;
       if(id)({error}=await S.sb.from("work").update(row).eq("id",id));
       else{

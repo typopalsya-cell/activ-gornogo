@@ -268,11 +268,9 @@ const LEGACY_POS={"Главный организатор":"Организато�
 const POS2TEAM={...LEGACY_POS};TEAM_KEYS.forEach(k=>TEAMS[k].pos.forEach(p=>{if(!POS2TEAM[p])POS2TEAM[p]=k;}));
 // Команда записи: указанная, а для старых записей — по должности
 const teamOf=w=>(w&&(w.team||POS2TEAM[w.position]))||"";
-// Семестр по дате: весенний — февраль–июль, осенний — август–январь (январь относится к осеннему семестру прошлого года)
+// Семестр по дате: осенний — 1 сентября – 31 декабря, весенний — 1 января – 31 августа; год календарный
 function semOf(d){const m=/^(\d{4})-(\d{2})/.exec(d||"");if(!m)return null;const y=+m[1],mo=+m[2];
-  if(mo===1)return {sem:"Осенний",year:y-1};
-  if(mo<=7)return {sem:"Весенний",year:y};
-  return {sem:"Осенний",year:y};}
+  return {sem:mo>=9?"Осенний":"Весенний",year:y};}
 const semShort=d=>{const s=semOf(d);return s?`${s.sem==="Осенний"?"осень":"весна"} ${s.year}`:"";};
 const REVIEW_GO="Отзыв ГО / организатора / капитана / куратора";
 const COMMENT_ROLES=["ГО","Организатор","Капитан","Куратор","Другое"];
@@ -489,7 +487,7 @@ async function viewSearch(){
       <select id="f-year" aria-label="Год"><option value="">Любой год</option></select>
       <button class="btn ghost" type="button" data-act="reset-filters">Сбросить</button>
     </div>
-    <p class="hint" style="margin-top:6px">Весенний семестр — февраль–июль, осенний — август–январь.</p>
+    <p class="hint" style="margin-top:6px">Осенний семестр — с 1 сентября по 31 декабря, весенний — с 1 января по 31 августа.</p>
     <div class="meta-row"><span id="stats" class="muted small"></span>${canEdit()?`<button class="btn primary" type="button" data-act="new">+ Добавить активиста</button>`:""}</div>
   </section>
   <section id="results" class="results" aria-live="polite"><div class="skeleton"></div><div class="skeleton"></div></section>`;
@@ -561,11 +559,15 @@ async function viewActivist(id,mine){
   renderActivist();
 }
 function perms(){const c=S.current,own=!!c.isOwner,ed=canEdit();
-  return {editCard:ed||own,delCard:ed,addWork:ed||own,editEntry:ed||own,writeSelf:own,writeGo:ed&&!own};}
+  const noAccount=!c.a.user_id;
+  return {editCard:ed||own,delCard:ed,addWork:ed||own,editEntry:ed||own,
+    writeSelf:own||(ed&&noAccount),   // за активиста без аккаунта комментарий может внести редактор
+    selfByStaff:!own&&ed&&noAccount,
+    writeGo:ed&&!own};}
 function entryHTML(w,p){
   const legacy=(w.functions||[]).join(", ");
   const did=[w.note,legacy].filter(Boolean).join("\n");
-  const canDel=canEdit()||(p.writeSelf&&!w.go_review);
+  const canDel=canEdit()||(S.current.isOwner&&!w.go_review);
   const t=teamOf(w),sem=semShort(w.date);
   return `<article class="entry">
     <div class="entry-h">
@@ -579,7 +581,7 @@ function entryHTML(w,p){
     <div class="reviews">
       <div class="rv self">
         <span class="rv-h">Комментарий о своей работе</span>
-        ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">Пока не написан</span>`}
+        ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${w.self_review_name?`со слов активиста, внёс(ла) ${esc(w.self_review_name)} · `:""}${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">${!p.writeSelf&&S.current.a.user_id&&!S.current.isOwner?"Пишет сам активист в своём аккаунте":"Пока не написан"}</span>`}
         ${p.writeSelf?`<button class="btn" type="button" data-act="review" data-kind="self" data-id="${esc(w.id)}">${w.self_review?"Изменить":"Написать комментарий"}</button>`:""}
       </div>
       <div class="rv go">
@@ -665,7 +667,7 @@ function workForm(w){
     <fieldset><legend>Команда</legend><div class="checks" id="w-teams">${TEAM_KEYS.map((k,i)=>`<label class="check" for="team-${i}"><input type="radio" id="team-${i}" name="team" value="${esc(k)}" required${team===k?" checked":""}><span>${esc(k)}</span></label>`).join("")}</div></fieldset>
     <fieldset><legend>Должность</legend><div id="w-poss">${posHTML(team,w.position)}</div></fieldset>
     <label for="w-note">Что делал(а) на мероприятии<textarea id="w-note" name="note" maxlength="2000" rows="4" placeholder="Например: снимала церемонию открытия, отобрала и обработала 150 фото, выложила альбом в ВК">${esc([w.note,legacy].filter(Boolean).join("\n"))}</textarea></label>
-    ${!w.id&&p.writeSelf?`<label for="w-self">Комментарий о своей работе (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
+    ${!w.id&&p.writeSelf?`<label for="w-self">Комментарий о своей работе${p.selfByStaff?" — со слов активиста":""} (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
     ${!w.id&&p.writeGo?`<label for="w-go">${REVIEW_GO} о работе (можно позже)<textarea id="w-go" name="go_review" maxlength="3000" placeholder="Как человек справился со своими задачами"></textarea></label>`:""}
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">${w.id?"Сохранить":"Добавить"}</button><button class="btn" type="button" data-act="close">Отмена</button></div>
@@ -681,8 +683,8 @@ function reviewForm(id,kind){
   openDialog(`<h2 id="dlg-title">${self?"Комментарий о своей работе":REVIEW_GO}</h2>
   <p class="hint">${esc(w.event)}${w.date?", "+fmtDate(w.date):""}${w.position?" · "+esc(w.position):""}</p>
   <form data-form="review" data-id="${esc(id)}" data-kind="${self?"self":"go"}">
-    <label for="r-text">${self?"Как прошла ваша работа":"Как человек справился со своими задачами"}<textarea id="r-text" name="text" maxlength="3000" rows="6" placeholder="${self?"Что получилось, что было сложно, чему научился(ась)":"Сильные стороны, что стоит подтянуть, взяли бы снова?"}">${esc(self?w.self_review:w.go_review)}</textarea></label>
-    <p class="hint">${self?"Этот текст сможете изменить только вы. Его видят ГО, организаторы, капитаны и кураторы, но править не могут.":"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить, очистите поле и сохраните.</p>
+    <label for="r-text">${self?(perms().selfByStaff?"Как активист сам оценивает свою работу":"Как прошла ваша работа"):"Как человек справился со своими задачами"}<textarea id="r-text" name="text" maxlength="3000" rows="6" placeholder="${self?"Что получилось, что было сложно, чему научился(ась)":"Сильные стороны, что стоит подтянуть, взяли бы снова?"}">${esc(self?w.self_review:w.go_review)}</textarea></label>
+    <p class="hint">${self?(perms().selfByStaff?"У этой карточки нет аккаунта, поэтому вы записываете комментарий со слов активиста. Под ним будет указано ваше имя. Если активист зарегистрируется и получит доступ к карточке, дальше комментарии будет писать он сам.":"Этот текст сможете изменить только вы. Его видят ГО, организаторы, капитаны и кураторы, но править не могут."):"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить, очистите поле и сохраните.</p>
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" data-act="close">Отмена</button></div>
   </form>`);

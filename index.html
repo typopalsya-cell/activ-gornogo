@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>База активистов Горного</title>
-<meta name="description" content="База активистов Горного: портфолио активистов, участие в мероприятиях и отзывы ГО. Вход для активистов и организаторов.">
+<meta name="description" content="База активистов Горного: портфолио активистов, участие в мероприятиях, отзывы ГО, организаторов, капитанов и кураторов. Вход для активистов и организаторов.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Crect width='34' height='34' rx='9' fill='%23b9791a'/%3E%3Cpath d='M17 6 27 12v10l-10 6-10-6V12z' fill='none' stroke='%231b1303' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -214,6 +214,18 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 .filters select{width:auto;max-width:100%;padding:7px 10px;font-size:14px}
 .mini-fn{font-size:12px;color:var(--accent-ink);margin-top:2px;overflow-wrap:anywhere}
 .dialog.wide{max-width:680px}
+.tag.team-part{background:var(--line);color:var(--ink)}
+.did{display:flex;flex-direction:column;gap:4px}
+.did p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
+.did .none{color:var(--muted);font-size:14px}
+.links{display:flex;flex-direction:column;gap:10px}
+.link{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:12px 14px;flex-wrap:wrap}
+.link .grow{flex:1;min-width:200px}
+.link .t{font-weight:700;color:var(--accent-ink);text-decoration:none;overflow-wrap:anywhere;font-size:16px}
+.link a.t:hover{text-decoration:underline}
+.link .u{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.link p{margin:4px 0 0;font-size:14px}
+.link .acts{display:flex;gap:2px}
 .intro-card{background:var(--wait-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:14px}
 .skills{display:flex;flex-direction:column;gap:8px}
 </style>
@@ -240,40 +252,33 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 <script>
 "use strict";
 /* ---------- справочники ---------- */
-// Команды, их должности и функции. Список можно дополнять: просто добавьте строку в нужный массив.
+// Команды и их должности. Чтобы поменять список, исправьте строки в кавычках.
+// Пустой список pos:[] значит, что в этой команде должность не указывается.
 const TEAMS={
-  "Организаторы":{cls:"team-org",
-    pos:["ГО","Организатор","Капитан команды","Куратор","Ответственный за блок","Ведущий","Техническая группа"],
-    fn:["Сценарий и тайминг","Координация площадки","Регистрация участников","Работа с участниками","Логистика и закупки","Работа с партнёрами","Звук, свет, техника","Ведение мероприятия","Руководство командой","Реквизит и декорации","Документы и согласования","Бюджет"]},
-  "Медиа":{cls:"team-media",
-    pos:["Руководитель медиа","Фотограф","Видеограф","Монтажёр","Дизайнер","SMM","Копирайтер"],
-    fn:["Фотосъёмка","Обработка фото","Видеосъёмка","Монтаж видео","Дизайн афиш и постов","Тексты и посты","Ведение соцсетей","Сторис и репортаж онлайн","Интервью","Анонс мероприятия"]},
-  "Волонтёры":{cls:"team-vol",
-    pos:["Волонтёр","Старший волонтёр","Хелпер","Аниматор"],
-    fn:["Встреча и навигация гостей","Регистрация гостей","Работа на станции / точке","Монтаж и демонтаж площадки","Раздача материалов","Сопровождение гостей и спикеров","Дежурство и порядок","Помощь организаторам","Фотозона и интерактив"]}
+  "Организаторы":{cls:"team-org",  pos:["ГО","Организатор","Капитан команды","Куратор","Ведущий","Редактор","РПГ"]},
+  "Медиа":       {cls:"team-media",pos:["Медиа-менеджер","Фотограф","Видеограф","Монтажёр","Дизайнер","Редактор","Рилсмейкер"]},
+  "Волонтёры":   {cls:"team-vol",  pos:[]},
+  "Участники":   {cls:"team-part", pos:[]}
 };
 const TEAM_KEYS=Object.keys(TEAMS);
-// Старые названия должностей (из первой версии сайта) -> команда
-const LEGACY_POS={"Главный организатор":"Организаторы","Ответственный за площадку":"Организаторы","Регистрация":"Волонтёры","Видеограф":"Медиа"};
-const POS2TEAM={...LEGACY_POS};TEAM_KEYS.forEach(k=>TEAMS[k].pos.forEach(p=>{POS2TEAM[p]=k;}));
-// Какие функции подразумевает должность: «Фотограф» всегда значит «Фотосъёмка» и т.д.
-// Используется в фильтре по функции и в «Опыте по функциям», а в форме ставит галочки сама.
-const POS_FN={
-  "Фотограф":["Фотосъёмка"],"Видеограф":["Видеосъёмка"],"Монтажёр":["Монтаж видео"],
-  "Дизайнер":["Дизайн афиш и постов"],"SMM":["Ведение соцсетей"],"Копирайтер":["Тексты и посты"],
-  "Ведущий":["Ведение мероприятия"],"Техническая группа":["Звук, свет, техника"],
-  "Капитан команды":["Руководство командой"],"ГО":["Руководство командой"],"Главный организатор":["Руководство командой"],
-  "Регистрация":["Регистрация гостей"]
-};
-// Функции записи: отмеченные + подразумеваемые должностью
-const fnsOf=w=>[...new Set([...((w&&w.functions)||[]),...(POS_FN[w&&w.position]||[])])];
+// Старые названия должностей (из прошлых версий сайта) -> команда, чтобы старые записи не терялись в фильтрах
+const LEGACY_POS={"Главный организатор":"Организаторы","Ответственный за площадку":"Организаторы","Ответственный за блок":"Организаторы","Техническая группа":"Организаторы",
+  "Руководитель медиа":"Медиа","SMM":"Медиа","Копирайтер":"Медиа",
+  "Волонтёр":"Волонтёры","Старший волонтёр":"Волонтёры","Хелпер":"Волонтёры","Аниматор":"Волонтёры","Регистрация":"Волонтёры"};
+const POS2TEAM={...LEGACY_POS};TEAM_KEYS.forEach(k=>TEAMS[k].pos.forEach(p=>{if(!POS2TEAM[p])POS2TEAM[p]=k;}));
 // Команда записи: указанная, а для старых записей — по должности
 const teamOf=w=>(w&&(w.team||POS2TEAM[w.position]))||"";
-const COMMENT_ROLES=["ГО","Куратор","Капитан","Другое"];
-const USER_ROLES=["Активист","ГО","Куратор","Капитан","Другое"];
+// Семестр по дате: весенний — февраль–июль, осенний — август–январь (январь относится к осеннему семестру прошлого года)
+function semOf(d){const m=/^(\d{4})-(\d{2})/.exec(d||"");if(!m)return null;const y=+m[1],mo=+m[2];
+  if(mo===1)return {sem:"Осенний",year:y-1};
+  if(mo<=7)return {sem:"Весенний",year:y};
+  return {sem:"Осенний",year:y};}
+const semShort=d=>{const s=semOf(d);return s?`${s.sem==="Осенний"?"осень":"весна"} ${s.year}`:"";};
+const REVIEW_GO="Отзыв ГО / организатора / капитана / куратора";
+const COMMENT_ROLES=["ГО","Организатор","Капитан","Куратор","Другое"];
 const ACCESS={pending:["Ждёт подтверждения","wait"],activist:["Активист",""],viewer:["Просмотр",""],editor:["Редактор","ok"],admin:["Администратор","acc"],blocked:["Доступ закрыт","bad"]};
-const ACCESS_HELP={pending:"ничего не видит",activist:"ведёт только своё портфолио",viewer:"поиск и все карточки",editor:"вносит данные и пишет отзывы ГО",admin:"всё + управляет доступом",blocked:"ничего не видит"};
-const roleCls=r=>({"Куратор":"kur","Капитан":"kap","Другое":"oth","Активист":"oth"}[r]||"");
+const ACCESS_HELP={pending:"ничего не видит",activist:"ведёт только своё портфолио",viewer:"поиск и все карточки",editor:"вносит данные и пишет отзывы (ГО, организаторы, капитаны, кураторы)",admin:"всё + управляет доступом",blocked:"ничего не видит"};
+const roleCls=r=>({"Куратор":"kur","Капитан":"kap","Другое":"oth"}[r]||"");
 const teamCls=t=>(TEAMS[t]&&TEAMS[t].cls)||"pos";
 
 /* ---------- helpers ---------- */
@@ -287,6 +292,8 @@ function fmtTs(ts){if(!ts)return"";const d=new Date(ts);if(isNaN(d))return"";ret
 function tgHandle(v){v=String(v||"").trim();if(!v)return"";return v.replace(/^https?:\/\/(www\.)?(t\.me|telegram\.me)\//i,"").replace(/^@/,"").split(/[/?#\s]/)[0];}
 function vkLink(v){v=String(v||"").trim();if(!v)return"";if(/^https?:\/\//i.test(v))return v;return "https://vk.com/"+v.replace(/^(www\.)?vk\.com\//i,"").replace(/^@/,"");}
 function vkLabel(v){return String(v||"").trim().replace(/^https?:\/\/(www\.)?/i,"");}
+// Ссылка для вкладки «Ссылки»: только http(s), без «javascript:» и прочего
+function safeUrl(v){v=String(v||"").trim();if(!v)return"";if(!/^[a-z][a-z0-9+.-]*:/i.test(v))v="https://"+v;return /^https?:\/\//i.test(v)?v:"";}
 function plural(n,a,b,c){const m10=n%10,m100=n%100;return n+" "+(m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20))?b:c);}
 let toastT;
 function toast(msg,bad){const t=$("#toast");t.textContent=msg;t.className="toast"+(bad?" bad":"");t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,bad?6500:2800);}
@@ -300,14 +307,12 @@ function errText(e){
   if(/rate limit|too many/i.test(m))return "Слишком много попыток. Подождите пару минут.";
   if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Нет связи с базой. Проверьте интернет и попробуйте снова.";
   if(/signups? not allowed/i.test(m))return "Регистрация на сайте выключена администратором.";
-  if(/column .* does not exist|Could not find the .* column/i.test(m))return "База не обновлена до новой версии. Администратору нужно ещё раз запустить supabase-setup.sql.";
+  if(/column .* does not exist|Could not find the .* (column|table)|relation .* does not exist|work_position_check/i.test(m))return "База не обновлена до новой версии. Администратору нужно ещё раз запустить supabase-setup.sql.";
   return m||"Что-то пошло не так. Попробуйте ещё раз.";
 }
-// подсчёт функций по записям участия: [["Фотосъёмка",3],...]
-function skillCounts(works){const m=new Map();for(const w of works)for(const f of fnsOf(w))m.set(f,(m.get(f)||0)+1);return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ru"));}
 
 /* ---------- state ---------- */
-const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",fTeam:"",fPos:"",fFn:"",current:null};
+const S={sb:null,session:null,me:null,activists:[],work:[],listLoaded:false,query:"",fTeam:"",fPos:"",fSem:"",fYear:"",current:null};
 const access=()=>S.me&&S.me.access;
 const canView=()=>["viewer","editor","admin"].includes(access());
 const canEdit=()=>["editor","admin"].includes(access());
@@ -344,7 +349,7 @@ function renderSetup(noLib){
 
 /* ---------- routing ---------- */
 function parseRoute(){const h=decodeURIComponent(location.hash.replace(/^#/,""));
-  if(h==="profile"||h==="users"||h==="my")return{v:h};
+  if(["profile","users","my","links"].includes(h))return{v:h};
   const m=/^a-([0-9a-f-]{36})$/i.exec(h);if(m)return{v:"a",id:m[1]};return{v:"search"};}
 addEventListener("hashchange",()=>{if(S.sb)route();});
 
@@ -354,6 +359,7 @@ function route(){
   if(!S.me){viewNoProfile();return;}
   const r=parseRoute();
   if(r.v==="profile"){viewProfile();return;}
+  if((isActivist()||canView())&&r.v==="links"){viewLinks();return;}
   if(isActivist()){viewMyCard();return;}
   if(!canView()){viewWaiting();return;}
   if(r.v==="users"&&isAdmin()){viewUsers();return;}
@@ -363,12 +369,13 @@ function route(){
 function renderTop(){
   const r=S.session&&S.me?parseRoute():null;
   let cur=r?(r.v==="a"?"search":r.v):"";
-  if(isActivist()&&cur!=="profile")cur="my";
+  if(isActivist()&&!["profile","links"].includes(cur))cur="my";
   const link=(h,t)=>`<a href="#${h}"${cur===h?' aria-current="page"':""}>${t}</a>`;
   let nav="";
   if(S.session&&S.me){
     if(isActivist())nav+=link("my","Моё портфолио");
     if(canView())nav+=link("search","Поиск");
+    if(isActivist()||canView())nav+=link("links","Ссылки");
     if(isAdmin())nav+=link("users","Пользователи");
     nav+=link("profile","Мой профиль");
   }
@@ -384,7 +391,7 @@ let authTab="login";
 function viewAuth(){
   document.title="Вход · База активистов Горного";
   $("#view").innerHTML=`<div class="auth">
-    <div class="intro"><h1>База активистов Горного</h1><p class="lede">Портфолио активистов: на каких мероприятиях работали, что делали, и отзывы с двух сторон — самого активиста и ГО. Данные видны только после входа и подтверждения доступа.</p></div>
+    <div class="intro"><h1>База активистов Горного</h1><p class="lede">Портфолио активистов: на каких мероприятиях работали, что делали, и отзывы с двух сторон — самого активиста и ГО, организатора, капитана или куратора. Данные видны только после входа и подтверждения доступа.</p></div>
     <section class="card">
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="login" aria-selected="${authTab==="login"}">Вход</button>
@@ -399,13 +406,12 @@ function viewAuth(){
         <p class="muted small" style="margin:0">Забыли пароль? Напишите администратору базы.</p>
       </form>`:`
       <form data-form="signup">
-        <p class="hint">Активисты ведут своё портфолио. ГО, кураторы и капитаны ищут людей и оставляют отзывы. Доступ подтверждает администратор.</p>
+        <p class="hint">После регистрации администратор подтвердит заявку и выдаст доступ.</p>
         <div class="fields">
           <label class="full" for="s-fio">ФИО полностью<input id="s-fio" name="fio" required autocomplete="name" placeholder="Петров Иван Сергеевич"></label>
-          <label for="s-role">Кто вы<select id="s-role" name="role_title">${USER_ROLES.map(r=>`<option>${r}</option>`).join("")}</select></label>
           <label for="s-phone">Телефон<input id="s-phone" name="phone" type="tel" autocomplete="tel" placeholder="+7 900 000-00-00"></label>
           <label for="s-tg">Telegram<input id="s-tg" name="tg" placeholder="@nickname"></label>
-          <label for="s-dir">Команда / направление<input id="s-dir" name="direction" placeholder="Медиа, Посвящение"></label>
+          <label class="full" for="s-dir">Команда / направление<input id="s-dir" name="direction" placeholder="Медиа, Посвящение"></label>
           <label class="full" for="s-email">Почта<input id="s-email" name="email" type="email" autocomplete="email" required></label>
           <label class="full" for="s-pass">Пароль (минимум 6 символов)<input id="s-pass" name="password" type="password" autocomplete="new-password" minlength="6" required></label>
         </div>
@@ -431,64 +437,59 @@ function fillDatalists(works){
   $("#dl-events").innerHTML=evs.map(e=>`<option value="${esc(e)}">`).join("");
 }
 
-
 /* ---------- search ---------- */
 async function loadList(force){
   if(S.listLoaded&&!force)return;
   const [a,w]=await Promise.all([
     S.sb.from("activists").select("id,fio,grp,tg,vk,email,phone,user_id").order("fio").limit(5000),
-    S.sb.from("work").select("id,activist_id,event,position,date,team,functions").limit(20000)
+    S.sb.from("work").select("id,activist_id,event,position,date,team,note").limit(20000)
   ]);
   if(a.error||w.error){toast(errText(a.error||w.error),true);return;}
   S.activists=a.data||[];S.work=w.data||[];S.listLoaded=true;
   fillDatalists(S.work);
 }
-// Варианты фильтра: справочник выбранной команды (или всех) + то, что реально есть в базе
-function filterGroups(kind){
-  const keys=S.fTeam?[S.fTeam]:TEAM_KEYS;
-  const groups=keys.map(k=>[k,[...TEAMS[k][kind]]]);
-  const known=new Set(groups.flatMap(g=>g[1]));
-  const extra=new Set();
+// Должности для фильтра: справочник выбранной команды (или всех) + то, что реально есть в базе
+function posGroups(){
+  const keys=S.fTeam?[S.fTeam]:TEAM_KEYS.filter(k=>TEAMS[k].pos.length);
+  const groups=keys.map(k=>[k,[...TEAMS[k].pos]]).filter(g=>g[1].length||S.fTeam);
+  const known=new Set(groups.flatMap(g=>g[1])),extra=new Set();
   for(const w of S.work){
+    const v=w.position;if(!v||known.has(v))continue;
     if(S.fTeam&&teamOf(w)!==S.fTeam)continue;
-    const vals=kind==="pos"?[w.position]:fnsOf(w);
-    for(const v of vals)if(v&&!known.has(v)){
-      const t=kind==="pos"?POS2TEAM[v]:"";
-      const g=t&&groups.find(x=>x[0]===t);
-      if(g){g[1].push(v);known.add(v);}else extra.add(v);
-    }
+    const g=groups.find(x=>x[0]===teamOf(w));
+    if(g){g[1].push(v);known.add(v);}else extra.add(v);
   }
   if(extra.size)groups.push(["Другие",[...extra].sort((a,b)=>a.localeCompare(b,"ru"))]);
-  return groups;
+  return groups.filter(g=>g[1].length);
 }
-function optionsHTML(kind,selected){
-  return filterGroups(kind).map(([k,list])=>`<optgroup label="${esc(k)}">${list.map(v=>`<option${v===selected?" selected":""}>${esc(v)}</option>`).join("")}</optgroup>`).join("");
-}
+function yearsInData(){return [...new Set(S.work.map(w=>semOf(w.date)).filter(Boolean).map(s=>s.year))].sort((a,b)=>b-a);}
 function renderFilterSelects(){
-  const fp=$("#f-pos"),ff=$("#f-fn");if(!fp||!ff)return;
-  // если выбранное значение не подходит к новой команде — сбрасываем
-  const has=(kind,v)=>!v||filterGroups(kind).some(g=>g[1].includes(v));
-  if(!has("pos",S.fPos))S.fPos="";
-  if(!has("fn",S.fFn))S.fFn="";
-  fp.innerHTML=`<option value="">Любая должность</option>${optionsHTML("pos",S.fPos)}`;
-  ff.innerHTML=`<option value="">Любая функция</option>${optionsHTML("fn",S.fFn)}`;
+  const fp=$("#f-pos"),fy=$("#f-year");if(!fp||!fy)return;
+  const groups=posGroups();
+  if(S.fPos&&!groups.some(g=>g[1].includes(S.fPos)))S.fPos="";
+  fp.disabled=!groups.length;
+  fp.innerHTML=`<option value="">${groups.length?"Любая должность":"Без должностей"}</option>`+groups.map(([k,list])=>`<optgroup label="${esc(k)}">${list.map(v=>`<option${v===S.fPos?" selected":""}>${esc(v)}</option>`).join("")}</optgroup>`).join("");
+  const years=yearsInData();
+  fy.innerHTML=`<option value="">Любой год</option>`+years.map(y=>`<option value="${y}"${String(y)===S.fYear?" selected":""}>${y}</option>`).join("");
 }
 async function viewSearch(){
   document.title="База активистов Горного";
   $("#view").innerHTML=`
   <section>
     <h1>Поиск активиста</h1>
-    <p class="lede">Ищите по ФИО или нику в Telegram. Фильтры показывают, кто уже работал в нужной команде или выполнял нужную функцию.</p>
+    <p class="lede">Ищите по ФИО, нику в Telegram или по тому, что человек делал на мероприятиях. Фильтры показывают, кто работал в нужной команде, на нужной должности и в нужном семестре.</p>
     <div class="searchbox">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Например: Иванова Мария" autocomplete="off" aria-label="ФИО активиста">
+      <input id="q" type="search" placeholder="Например: Иванова Мария" autocomplete="off" aria-label="Поиск">
     </div>
     <div class="filters">
       <select id="f-team" aria-label="Команда"><option value="">Все команды</option>${TEAM_KEYS.map(k=>`<option${S.fTeam===k?" selected":""}>${esc(k)}</option>`).join("")}</select>
       <select id="f-pos" aria-label="Должность"><option value="">Любая должность</option></select>
-      <select id="f-fn" aria-label="Функция"><option value="">Любая функция</option></select>
+      <select id="f-sem" aria-label="Семестр"><option value="">Любой семестр</option>${["Весенний","Осенний"].map(s=>`<option${S.fSem===s?" selected":""}>${s}</option>`).join("")}</select>
+      <select id="f-year" aria-label="Год"><option value="">Любой год</option></select>
       <button class="btn ghost" type="button" data-act="reset-filters">Сбросить</button>
     </div>
+    <p class="hint" style="margin-top:6px">Весенний семестр — февраль–июль, осенний — август–январь.</p>
     <div class="meta-row"><span id="stats" class="muted small"></span>${canEdit()?`<button class="btn primary" type="button" data-act="new">+ Добавить активиста</button>`:""}</div>
   </section>
   <section id="results" class="results" aria-live="polite"><div class="skeleton"></div><div class="skeleton"></div></section>`;
@@ -497,7 +498,8 @@ async function viewSearch(){
   q.addEventListener("keydown",e=>{if(e.key==="Enter"){const f=$("#results a.row");if(f)location.hash=f.getAttribute("href").slice(1);}});
   $("#f-team").addEventListener("change",e=>{S.fTeam=e.target.value;renderFilterSelects();renderResults();});
   $("#f-pos").addEventListener("change",e=>{S.fPos=e.target.value;renderResults();});
-  $("#f-fn").addEventListener("change",e=>{S.fFn=e.target.value;renderResults();});
+  $("#f-sem").addEventListener("change",e=>{S.fSem=e.target.value;renderResults();});
+  $("#f-year").addEventListener("change",e=>{S.fYear=e.target.value;renderResults();});
   setTimeout(()=>q.focus(),0);
   await loadList();
   renderFilterSelects();
@@ -508,25 +510,28 @@ function renderResults(){
   const n=S.activists.length;
   const byA=new Map();for(const w of S.work){if(!byA.has(w.activist_id))byA.set(w.activist_id,[]);byA.get(w.activist_id).push(w);}
   const toks=norm(S.query).split(" ").filter(Boolean),q0=toks[0]||"";
-  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>[w.position,...fnsOf(w)])].join(" "))};});
+  let list=S.activists.map(a=>{const ws=byA.get(a.id)||[];return {a,ws,hay:norm([a.fio,a.tg,a.grp,a.vk,a.email,a.phone,...ws.flatMap(w=>[w.position,w.event,w.note])].join(" "))};});
   if(toks.length)list=list.filter(x=>toks.every(t=>x.hay.includes(t)));
-  const match=w=>(!S.fTeam||teamOf(w)===S.fTeam)&&(!S.fPos||w.position===S.fPos)&&(!S.fFn||fnsOf(w).includes(S.fFn));
-  const filtering=S.fTeam||S.fPos||S.fFn;
+  // все выбранные фильтры должны совпасть в одной и той же записи участия
+  const match=w=>{const s=semOf(w.date);
+    return (!S.fTeam||teamOf(w)===S.fTeam)&&(!S.fPos||w.position===S.fPos)
+      &&(!S.fSem||(s&&s.sem===S.fSem))&&(!S.fYear||(s&&String(s.year)===S.fYear));};
+  const filtering=S.fTeam||S.fPos||S.fSem||S.fYear;
   if(filtering)list=list.filter(x=>x.ws.some(match));
-  const fnCount=x=>filtering?x.ws.filter(match).length:0;
-  list.sort((x,y)=>fnCount(y)-fnCount(x)||(norm(x.a.fio).startsWith(q0)?0:1)-(norm(y.a.fio).startsWith(q0)?0:1)||String(x.a.fio).localeCompare(String(y.a.fio),"ru"));
+  const hits=x=>filtering?x.ws.filter(match).length:0;
+  list.sort((x,y)=>hits(y)-hits(x)||(norm(x.a.fio).startsWith(q0)?0:1)-(norm(y.a.fio).startsWith(q0)?0:1)||String(x.a.fio).localeCompare(String(y.a.fio),"ru"));
   $("#stats").textContent=`Найдено ${list.length} из ${plural(n,"активиста","активистов","активистов")}`;
   if(!n){res.innerHTML=`<div class="empty"><strong>База пока пустая</strong><span>${canEdit()?"Добавьте первого активиста кнопкой выше или пригласите активистов зарегистрироваться самим.":"Активистов добавляют редакторы."}</span></div>`;return;}
   if(!list.length){res.innerHTML=`<div class="empty"><strong>Никого не нашли</strong><span>Попробуйте убрать фильтры или ввести только фамилию.</span></div>`;return;}
   res.innerHTML=list.slice(0,300).map(({a,ws})=>{
-    const sorted=ws.slice().sort((x,y)=>String(y.date||"").localeCompare(String(x.date||"")));
-    const lw=sorted[0],tg=tgHandle(a.tg);
+    const pool=filtering?ws.filter(match):ws;
+    const lw=pool.slice().sort((x,y)=>String(y.date||"").localeCompare(String(x.date||"")))[0],tg=tgHandle(a.tg);
     const sub=[a.grp,tg?"@"+tg:""].filter(Boolean).map(esc).join(" · ")||"&nbsp;";
-    const top=skillCounts(ws).slice(0,4).map(([f,c])=>`${esc(f)}${c>1?" ×"+c:""}`).join(" · ");
+    const head=lw?[lw.position,teamOf(lw)].filter(Boolean).map(esc).join(" · "):"";
     return `<a class="row" href="#a-${esc(a.id)}">
       <div class="avatar" aria-hidden="true">${esc(initials(a.fio))}</div>
-      <div style="min-width:0"><div class="name">${esc(a.fio)}</div><div class="sub">${sub}</div>${top?`<div class="mini-fn">${top}</div>`:""}</div>
-      <div class="last">${lw?`<span class="pos">${esc(lw.position)}${teamOf(lw)?" · "+esc(teamOf(lw)):""}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
+      <div style="min-width:0"><div class="name">${esc(a.fio)}</div><div class="sub">${sub}</div></div>
+      <div class="last">${lw?`<span class="pos">${head}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
       <div class="count">${ws.length?plural(ws.length,"мероприятие","мероприятия","мероприятий"):""}</div></a>`;}).join("")
     +(list.length>300?`<p class="muted small">Показаны первые 300 из ${list.length}. Уточните запрос.</p>`:"");
 }
@@ -558,27 +563,28 @@ async function viewActivist(id,mine){
 function perms(){const c=S.current,own=!!c.isOwner,ed=canEdit();
   return {editCard:ed||own,delCard:ed,addWork:ed||own,editEntry:ed||own,writeSelf:own,writeGo:ed&&!own};}
 function entryHTML(w,p){
-  const fns=(w.functions||[]);
+  const legacy=(w.functions||[]).join(", ");
+  const did=[w.note,legacy].filter(Boolean).join("\n");
   const canDel=canEdit()||(p.writeSelf&&!w.go_review);
+  const t=teamOf(w),sem=semShort(w.date);
   return `<article class="entry">
     <div class="entry-h">
       <span class="ev-name">${esc(w.event)}</span>
-      <span class="when">${fmtDate(w.date)||"дата не указана"}</span>
-      ${teamOf(w)?`<span class="tag ${teamCls(teamOf(w))}">${esc(teamOf(w))}</span>`:""}
-      <span class="tag pos">${esc(w.position)}</span>
+      <span class="when">${fmtDate(w.date)||"дата не указана"}${sem?" · "+sem:""}</span>
+      ${t?`<span class="tag ${teamCls(t)}">${esc(t)}</span>`:""}
+      ${w.position?`<span class="tag pos">${esc(w.position)}</span>`:""}
       ${p.editEntry||canDel?`<span class="acts">${p.editEntry?`<button class="btn ghost" type="button" data-act="edit-work" data-id="${esc(w.id)}">Изменить</button>`:""}${canDel?`<button class="btn danger" type="button" data-act="del-work" data-id="${esc(w.id)}">Удалить</button>`:""}</span>`:""}
     </div>
-    ${fns.length?`<div class="fchips">${fns.map(f=>`<span class="fchip">${esc(f)}</span>`).join("")}</div>`:""}
-    ${w.note?`<p class="note">${fns.length?"Ещё: ":""}${esc(w.note)}</p>`:""}
+    <div class="did"><span class="rv-h">Что делал(а)</span>${did?`<p>${esc(did)}</p>`:`<span class="none">Не заполнено</span>`}</div>
     <div class="reviews">
       <div class="rv self">
-        <span class="rv-h">Сам(а) о своей работе</span>
+        <span class="rv-h">Комментарий о своей работе</span>
         ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">Пока не написан</span>`}
-        ${p.writeSelf?`<button class="btn" type="button" data-act="review" data-kind="self" data-id="${esc(w.id)}">${w.self_review?"Изменить":"Написать о своей работе"}</button>`:""}
+        ${p.writeSelf?`<button class="btn" type="button" data-act="review" data-kind="self" data-id="${esc(w.id)}">${w.self_review?"Изменить":"Написать комментарий"}</button>`:""}
       </div>
       <div class="rv go">
-        <span class="rv-h">Отзыв ГО</span>
-        ${w.go_review?`<p>${esc(w.go_review)}</p><span class="rv-by">${esc(w.go_review_name||"ГО")} · ${esc(fmtTs(w.go_review_at))}</span>`:`<span class="none">Пока нет отзыва</span>`}
+        <span class="rv-h">${REVIEW_GO}</span>
+        ${w.go_review?`<p>${esc(w.go_review)}</p><span class="rv-by">${esc(w.go_review_name||"Без имени")} · ${esc(fmtTs(w.go_review_at))}</span>`:`<span class="none">Пока нет отзыва</span>`}
         ${p.writeGo?`<button class="btn" type="button" data-act="review" data-kind="go" data-id="${esc(w.id)}">${w.go_review?"Изменить отзыв":"Оставить отзыв"}</button>`:""}
       </div>
     </div>
@@ -587,42 +593,37 @@ function entryHTML(w,p){
 function renderActivist(){
   const {a,work,comments,mine}=S.current,p=perms();
   if(!mine)document.title=a.fio+" · Актив Горного";
-  const tg=tgHandle(a.tg),skills=skillCounts(work);
+  const tg=tgHandle(a.tg);
   const teams=[...new Set(work.map(teamOf).filter(Boolean))];
   const item=(label,html,copy)=>`<div><dt>${label}</dt><dd>${html||'<span class="muted">не указано</span>'}${html&&copy?`<button class="copy" type="button" data-copy="${esc(copy)}">копировать</button>`:""}</dd></div>`;
   const myRole=COMMENT_ROLES.includes(S.me.role_title)?S.me.role_title:"ГО";
   const reviewed=work.filter(w=>w.go_review).length;
   $("#view").innerHTML=`
   ${mine?"":`<a class="back" href="#search">← К поиску</a>`}
-  ${mine?`<div class="intro-card">Это ваше портфолио. Добавляйте мероприятия, отмечайте галочками, что вы делали, и пишите пару слов о своей работе. ГО оставит отзыв со своей стороны. Свой отзыв можете менять только вы, а отзыв ГО — только ГО.</div>`:""}
+  ${mine?`<div class="intro-card">Это ваше портфолио. Добавляйте мероприятия, пишите, что вы там делали, и оставляйте комментарий о своей работе. ГО, организатор, капитан или куратор оставит отзыв со своей стороны. Свой комментарий можете менять только вы, а их отзыв — только они.</div>`:""}
   <div class="person-head">
     <div class="avatar lg" aria-hidden="true">${esc(initials(a.fio))}</div>
     <div class="grow"><h1>${esc(a.fio)}</h1><div class="sub">${[a.grp,work.length?plural(work.length,"мероприятие","мероприятия","мероприятий"):"",teams.join(", "),a.user_id&&!mine?"заполняет сам(а)":""].filter(Boolean).map(esc).join(" · ")}</div></div>
     ${p.editCard||p.delCard?`<div class="form-actions">${p.editCard?`<button class="btn" type="button" data-act="edit">Редактировать контакты</button>`:""}${p.delCard?`<button class="btn danger" type="button" data-act="del-activist">Удалить</button>`:""}</div>`:""}
   </div>
   <div class="grid">
-    <div class="stack">
-      <section class="card"><h2>Личная информация</h2><dl class="contacts">
-        ${item("ФИО",esc(a.fio))}
-        ${item("Группа",esc(a.grp))}
-        ${item("Телефон",a.phone?`<a href="tel:${esc(String(a.phone).replace(/[^\d+]/g,""))}">${esc(a.phone)}</a>`:"",a.phone)}
-        ${item("Telegram",tg?`<a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:"",tg?"@"+tg:"")}
-        ${item("ВКонтакте",a.vk?`<a href="${esc(vkLink(a.vk))}" target="_blank" rel="noopener">${esc(vkLabel(a.vk))}</a>`:"",a.vk?vkLink(a.vk):"")}
-        ${item("Почта",a.email?`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`:"",a.email)}
-        ${a.about?item("О себе / навыки",esc(a.about)):""}
-      </dl></section>
-      <section class="card"><h2>Опыт по функциям</h2>
-        ${skills.length?`<div class="fchips">${skills.map(([f,c])=>`<span class="fchip">${esc(f)}${c>1?` <b>×${c}</b>`:""}</span>`).join("")}</div>`:`<p class="muted" style="margin:0">Появится, когда в участии будут отмечены функции.</p>`}
-      </section>
-    </div>
+    <section class="card"><h2>Личная информация</h2><dl class="contacts">
+      ${item("ФИО",esc(a.fio))}
+      ${item("Группа",esc(a.grp))}
+      ${item("Телефон",a.phone?`<a href="tel:${esc(String(a.phone).replace(/[^\d+]/g,""))}">${esc(a.phone)}</a>`:"",a.phone)}
+      ${item("Telegram",tg?`<a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:"",tg?"@"+tg:"")}
+      ${item("ВКонтакте",a.vk?`<a href="${esc(vkLink(a.vk))}" target="_blank" rel="noopener">${esc(vkLabel(a.vk))}</a>`:"",a.vk?vkLink(a.vk):"")}
+      ${item("Почта",a.email?`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`:"",a.email)}
+      ${a.about?item("О себе / навыки",esc(a.about)):""}
+    </dl></section>
     <div class="stack">
       <section class="card">
-        <div class="card-h"><h2>Участие в мероприятиях</h2><span class="muted small">${work.length?`${plural(work.length,"запись","записи","записей")} · отзывов ГО: ${reviewed}`:""}</span></div>
+        <div class="card-h"><h2>Участие в мероприятиях</h2><span class="muted small">${work.length?`${plural(work.length,"запись","записи","записей")} · отзывов: ${reviewed}`:""}</span></div>
         ${p.addWork?`<div><button class="btn primary" type="button" data-act="add-work">+ Добавить участие</button></div>`:""}
         ${work.length?`<div class="entries">${work.map(w=>entryHTML(w,p)).join("")}</div>`:`<p class="muted" style="margin:0">Пока нет записей о мероприятиях.</p>`}
       </section>
       ${canView()?`<section class="card">
-        <h2>Комментарии ГО, кураторов и капитанов</h2>
+        <h2>Комментарии ГО, организаторов, капитанов и кураторов</h2>
         <p class="hint">Общие внутренние заметки о человеке. Сам активист их не видит.</p>
         ${comments.length?`<div class="comments">${comments.map(c=>{const cls=roleCls(c.role);const minec=c.author_id===S.me.id;
           return `<div class="comment ${cls}"><div class="comment-h"><span class="tag ${cls}">${esc(c.role)}</span><span class="who">${esc((c.author&&c.author.fio)||"Удалённый пользователь")}</span><span class="when">${esc(fmtTs(c.created_at))}</span>${(isAdmin()||(minec&&canEdit()))?`<button class="btn danger" type="button" data-act="del-comment" data-id="${esc(c.id)}">Удалить</button>`:""}</div><p>${esc(c.text)}</p></div>`;}).join("")}</div>`:`<p class="muted" style="margin:0">Комментариев пока нет.</p>`}
@@ -641,71 +642,80 @@ function renderActivist(){
 async function refreshActivist(){if(S.current){S.listLoaded=false;await viewActivist(S.current.a.id,S.current.mine);}}
 
 /* ---------- participation dialog ---------- */
-function checksHTML(team,checked){
-  if(!team)return `<p class="hint">Сначала выберите команду: появится список функций.</p>`;
-  const set=new Set(checked||[]);
-  const list=[...TEAMS[team].fn,...[...set].filter(f=>!TEAMS[team].fn.includes(f))];
-  return `<div class="checks">${list.map((f,i)=>`<label class="check" for="fn-${i}"><input type="checkbox" id="fn-${i}" name="fn" value="${esc(f)}"${set.has(f)?" checked":""}><span>${esc(f)}</span></label>`).join("")}</div>`;
-}
-// Должности команды кнопками; «Другая» — для редких случаев, со своим текстом
+// Должности выбранной команды кнопками; старая должность не из списка показывается отдельной кнопкой
 function posHTML(team,current){
   if(!team)return `<p class="hint">Сначала выберите команду.</p>`;
-  const list=TEAMS[team].pos,custom=current&&!list.includes(current);
-  return `<div class="checks">${list.map((p,i)=>`<label class="check" for="pos-${i}"><input type="radio" id="pos-${i}" name="pos" value="${esc(p)}"${p===current?" checked":""}><span>${esc(p)}</span></label>`).join("")}
-    <label class="check" for="pos-other"><input type="radio" id="pos-other" name="pos" value="__other"${custom?" checked":""}><span>Другая…</span></label></div>
-    <input id="w-pos-other" maxlength="200" placeholder="Напишите должность" value="${custom?esc(current):""}"${custom?"":" hidden"} aria-label="Другая должность" style="margin-top:8px">`;
+  const list=[...TEAMS[team].pos];
+  if(!list.length)return `<p class="hint">Для команды «${esc(team)}» должность не указывается.</p>`;
+  if(current&&!list.includes(current))list.push(current);
+  return `<div class="checks">${list.map((p,i)=>`<label class="check" for="pos-${i}"><input type="radio" id="pos-${i}" name="pos" value="${esc(p)}"${p===current?" checked":""}><span>${esc(p)}</span></label>`).join("")}</div>`;
 }
-function currentPos(){
-  const r=document.querySelector('#w-poss input[name="pos"]:checked');if(!r)return "";
-  if(r.value==="__other")return (($("#w-pos-other")||{}).value||"").trim();
-  return r.value;
-}
+const currentPos=()=>{const r=document.querySelector('#w-poss input[name="pos"]:checked');return r?r.value:"";};
 function workForm(w){
   const p=perms();w=w||{};
   const team=teamOf(w);
+  const legacy=(w.functions||[]).join(", ");
   openDialog(`<h2 id="dlg-title">${w.id?"Изменить участие":"Добавить участие"}</h2>
   <form data-form="work" data-id="${esc(w.id||"")}">
     <div class="fields">
       <label class="full" for="w-event">Мероприятие<input id="w-event" name="event" list="dl-events" required maxlength="300" value="${esc(w.event)}" placeholder="Посвящение в студенты 2026"></label>
       <label for="w-date">Дата<input id="w-date" name="date" type="date" value="${esc(w.date||"")}"></label>
+      <p class="hint" style="align-self:end;margin-bottom:10px">По дате определяется семестр для фильтров.</p>
     </div>
     <fieldset><legend>Команда</legend><div class="checks" id="w-teams">${TEAM_KEYS.map((k,i)=>`<label class="check" for="team-${i}"><input type="radio" id="team-${i}" name="team" value="${esc(k)}" required${team===k?" checked":""}><span>${esc(k)}</span></label>`).join("")}</div></fieldset>
     <fieldset><legend>Должность</legend><div id="w-poss">${posHTML(team,w.position)}</div></fieldset>
-    <fieldset><legend>Что делал(а) — отметьте всё подходящее</legend><div id="w-fns">${checksHTML(team,w.functions)}</div></fieldset>
-    <label for="w-note">Другое, если нет в списке<input id="w-note" name="note" maxlength="500" value="${esc(w.note)}" placeholder="Например: вёл квиз для первокурсников"></label>
-    ${!w.id&&p.writeSelf?`<label for="w-self">Пара слов о своей работе (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
-    ${!w.id&&p.writeGo?`<label for="w-go">Отзыв ГО о работе (можно позже)<textarea id="w-go" name="go_review" maxlength="3000" placeholder="Как человек справился со своими задачами"></textarea></label>`:""}
+    <label for="w-note">Что делал(а) на мероприятии<textarea id="w-note" name="note" maxlength="2000" rows="4" placeholder="Например: снимала церемонию открытия, отобрала и обработала 150 фото, выложила альбом в ВК">${esc([w.note,legacy].filter(Boolean).join("\n"))}</textarea></label>
+    ${!w.id&&p.writeSelf?`<label for="w-self">Комментарий о своей работе (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
+    ${!w.id&&p.writeGo?`<label for="w-go">${REVIEW_GO} о работе (можно позже)<textarea id="w-go" name="go_review" maxlength="3000" placeholder="Как человек справился со своими задачами"></textarea></label>`:""}
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">${w.id?"Сохранить":"Добавить"}</button><button class="btn" type="button" data-act="close">Отмена</button></div>
   </form>`,true);
   $("#w-teams").addEventListener("change",e=>{
-    const t=e.target.value;
-    const kept=[...document.querySelectorAll('#w-fns input[name="fn"]:checked')].map(x=>x.value);
-    const pos=currentPos();
-    $("#w-fns").innerHTML=checksHTML(t,kept);
+    const t=e.target.value,pos=currentPos();
     $("#w-poss").innerHTML=posHTML(t,TEAMS[t].pos.includes(pos)?pos:"");
-  });
-  $("#w-poss").addEventListener("change",e=>{
-    if(e.target.name!=="pos")return;
-    for(const f of (POS_FN[e.target.value]||[])){
-      const box=[...document.querySelectorAll('#w-fns input[name="fn"]')].find(x=>x.value===f);
-      if(box)box.checked=true;
-    }
-    const other=$("#w-pos-other");if(!other)return;
-    other.hidden=e.target.value!=="__other";if(!other.hidden)other.focus();
   });
 }
 function reviewForm(id,kind){
   const w=S.current.work.find(x=>x.id===id);if(!w)return;
   const self=kind==="self";
-  openDialog(`<h2 id="dlg-title">${self?"О своей работе":"Отзыв ГО"}</h2>
-  <p class="hint">${esc(w.event)}${w.date?", "+fmtDate(w.date):""} · ${esc(w.position)}</p>
+  openDialog(`<h2 id="dlg-title">${self?"Комментарий о своей работе":REVIEW_GO}</h2>
+  <p class="hint">${esc(w.event)}${w.date?", "+fmtDate(w.date):""}${w.position?" · "+esc(w.position):""}</p>
   <form data-form="review" data-id="${esc(id)}" data-kind="${self?"self":"go"}">
     <label for="r-text">${self?"Как прошла ваша работа":"Как человек справился со своими задачами"}<textarea id="r-text" name="text" maxlength="3000" rows="6" placeholder="${self?"Что получилось, что было сложно, чему научился(ась)":"Сильные стороны, что стоит подтянуть, взяли бы снова?"}">${esc(self?w.self_review:w.go_review)}</textarea></label>
-    <p class="hint">${self?"Этот текст сможете изменить только вы. ГО его видит, но править не может.":"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить отзыв, очистите поле и сохраните.</p>
+    <p class="hint">${self?"Этот текст сможете изменить только вы. Его видят ГО, организаторы, капитаны и кураторы, но править не могут.":"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить, очистите поле и сохраните.</p>
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" data-act="close">Отмена</button></div>
   </form>`);
+}
+
+/* ---------- links ---------- */
+async function viewLinks(){
+  document.title="Ссылки · Актив Горного";
+  $("#view").innerHTML=`<section><h1>Ссылки</h1><p class="lede">Чаты, документы, формы и всё, что нужно активу под рукой.${canEdit()?" Добавлять и менять ссылки могут редакторы и администратор.":""}</p></section>
+  ${canEdit()?`<section class="card"><h2>Добавить ссылку</h2>
+    <form data-form="link"><div class="fields">
+      <label for="k-title">Название<input id="k-title" name="title" required maxlength="200" placeholder="Чат актива в Telegram"></label>
+      <label for="k-url">Адрес<input id="k-url" name="url" required maxlength="1000" placeholder="https://t.me/..."></label>
+      <label class="full" for="k-desc">Описание (необязательно)<input id="k-desc" name="description" maxlength="500" placeholder="Основной чат, туда пишут анонсы"></label>
+    </div><p class="formerr" id="link-err"></p><div class="form-actions"><button class="btn primary" type="submit">Добавить</button></div></form></section>`:""}
+  <section class="card" id="links-card"><div class="skeleton"></div></section>`;
+  const {data,error}=await S.sb.from("links").select("*").order("sort").order("created_at");
+  if(error){toast(errText(error),true);$("#links-card").innerHTML=`<p class="muted" style="margin:0">Не удалось загрузить ссылки.</p>`;return;}
+  S.links=data||[];
+  $("#links-card").innerHTML=S.links.length?`<div class="links">${S.links.map((l,i)=>{const u=safeUrl(l.url);
+    return `<div class="link"><div class="grow">${u?`<a class="t" href="${esc(u)}" target="_blank" rel="noopener">${esc(l.title)}</a>`:`<span class="t">${esc(l.title)}</span>`}
+      <div class="u">${esc(l.url)}</div>${l.description?`<p>${esc(l.description)}</p>`:""}</div>
+      ${canEdit()?`<div class="acts">${i>0?`<button class="btn ghost" type="button" data-act="link-up" data-id="${esc(l.id)}" aria-label="Выше">↑</button>`:""}<button class="btn ghost" type="button" data-act="edit-link" data-id="${esc(l.id)}">Изменить</button><button class="btn danger" type="button" data-act="del-link" data-id="${esc(l.id)}">Удалить</button></div>`:""}
+    </div>`;}).join("")}</div>`:`<p class="muted" style="margin:0">Ссылок пока нет.${canEdit()?" Добавьте первую формой выше.":""}</p>`;
+}
+function linkForm(l){
+  openDialog(`<h2 id="dlg-title">Изменить ссылку</h2>
+  <form data-form="link" data-id="${esc(l.id)}"><div class="fields">
+    <label class="full" for="e-title">Название<input id="e-title" name="title" required maxlength="200" value="${esc(l.title)}"></label>
+    <label class="full" for="e-url">Адрес<input id="e-url" name="url" required maxlength="1000" value="${esc(l.url)}"></label>
+    <label class="full" for="e-desc">Описание<input id="e-desc" name="description" maxlength="500" value="${esc(l.description)}"></label>
+  </div><p class="formerr" id="dlg-err"></p>
+  <div class="form-actions"><button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" data-act="close">Отмена</button></div></form>`);
 }
 
 /* ---------- profile ---------- */
@@ -716,10 +726,9 @@ function viewProfile(){
   <section class="card"><div class="card-h"><h2>${esc(p.email||"")}</h2><span class="chip ${a[1]}">${esc(a[0])}</span></div>
   <form data-form="profile"><div class="fields">
     <label class="full" for="p-fio">ФИО<input id="p-fio" name="fio" required maxlength="200" value="${esc(p.fio)}"></label>
-    <label for="p-role">Кто вы<select id="p-role" name="role_title">${USER_ROLES.map(r=>`<option${p.role_title===r?" selected":""}>${r}</option>`).join("")}</select></label>
     <label for="p-phone">Телефон<input id="p-phone" name="phone" type="tel" maxlength="50" value="${esc(p.phone)}"></label>
     <label for="p-tg">Telegram<input id="p-tg" name="tg" maxlength="100" value="${esc(p.tg)}"></label>
-    <label for="p-dir">Команда / направление<input id="p-dir" name="direction" maxlength="300" value="${esc(p.direction)}"></label>
+    <label class="full" for="p-dir">Команда / направление<input id="p-dir" name="direction" maxlength="300" value="${esc(p.direction)}"></label>
   </div><div class="form-actions"><button class="btn primary" type="submit">Сохранить</button></div></form></section>`;
 }
 
@@ -734,10 +743,9 @@ async function viewUsers(){
   const list=(data||[]).sort((x,y)=>(order[x.access]??9)-(order[y.access]??9));
   const pend=list.filter(u=>u.access==="pending").length;
   $("#users-card").innerHTML=`<div class="card-h"><h2>Все пользователи</h2><span class="muted small">${pend?plural(pend,"заявка ждёт","заявки ждут","заявок ждут")+" подтверждения":"новых заявок нет"}</span></div>
-  ${list.length?`<div class="tablewrap"><table><thead><tr><th>ФИО</th><th>Кто</th><th>Контакты</th><th>Направление</th><th>Доступ</th></tr></thead><tbody>
+  ${list.length?`<div class="tablewrap"><table><thead><tr><th>ФИО</th><th>Контакты</th><th>Направление</th><th>Доступ</th></tr></thead><tbody>
   ${list.map(u=>{const tg=tgHandle(u.tg);const self=u.id===S.me.id;
     return `<tr><td><b>${esc(u.fio||"Без имени")}</b><div class="sub">${esc(u.email)} · ${esc(fmtTs(u.created_at))}</div></td>
-    <td><span class="tag ${roleCls(u.role_title)}">${esc(u.role_title)}</span></td>
     <td class="small">${esc(u.phone)}${tg?`<br><a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:""}</td>
     <td class="small">${esc(u.direction)}</td>
     <td>${self?`<span class="chip acc">Это вы</span>`:`<select class="access" data-user="${esc(u.id)}" aria-label="Доступ для ${esc(u.fio)}">${Object.entries(ACCESS).map(([k,v])=>`<option value="${k}"${u.access===k?" selected":""}>${v[0]}</option>`).join("")}</select>`}</td></tr>`;}).join("")}
@@ -784,12 +792,22 @@ document.addEventListener("click",async e=>{
   if(act==="confirm-yes"||act==="confirm-no"){const r=confirmResolve;confirmResolve=null;closeDialog();if(r)r(act==="confirm-yes");return;}
   if(act==="logout"){await S.sb.auth.signOut();S.session=null;S.me=null;S.listLoaded=false;location.hash="";route();return;}
   if(act==="recheck"){b.disabled=true;await loadMe();route();if(!canView()&&!isActivist())toast("Доступ пока не выдан");return;}
-  if(act==="reset-filters"){S.fTeam="";S.fPos="";S.fFn="";S.query="";viewSearch();return;}
+  if(act==="reset-filters"){S.fTeam="";S.fPos="";S.fSem="";S.fYear="";S.query="";viewSearch();return;}
   if(act==="new")return activistForm(null);
   if(act==="edit")return activistForm(S.current&&S.current.a);
   if(act==="add-work")return workForm(null);
   if(act==="edit-work")return workForm(S.current.work.find(x=>x.id===id));
   if(act==="review")return reviewForm(id,b.dataset.kind);
+  if(act==="edit-link")return linkForm((S.links||[]).find(x=>x.id===id)||{});
+  if(act==="link-up"){
+    const L=S.links||[],i=L.findIndex(x=>x.id===id);if(i<1)return;
+    const order=L.map(x=>x.id);[order[i-1],order[i]]=[order[i],order[i-1]];
+    b.disabled=true;
+    for(let k=0;k<order.length;k++){const {error}=await S.sb.from("links").update({sort:k}).eq("id",order[k]);if(error){toast(errText(error),true);break;}}
+    viewLinks();return;
+  }
+  if(act==="del-link"){if(!await confirmBox("Удалить ссылку?","Ссылка исчезнет из вкладки «Ссылки».","Удалить"))return;
+    const {error}=await S.sb.from("links").delete().eq("id",id);if(error)return toast(errText(error),true);toast("Ссылка удалена");viewLinks();return;}
   if(act==="del-activist"){
     const a=S.current&&S.current.a;if(!a)return;
     if(!await confirmBox("Удалить карточку?",`${a.fio}, всё участие, отзывы и комментарии будут удалены без возможности восстановления.`,"Удалить навсегда"))return;
@@ -799,7 +817,7 @@ document.addEventListener("click",async e=>{
   }
   if(act==="del-work"){if(!await confirmBox("Удалить запись?","Запись об участии и отзывы к ней исчезнут из карточки.","Удалить"))return;
     const {error,count}=await S.sb.from("work").delete({count:"exact"}).eq("id",id);if(error)return toast(errText(error),true);
-    if(count===0)return toast("Не удалось удалить: по записи уже есть отзыв ГО.",true);
+    if(count===0)return toast("Не удалось удалить: по записи уже есть отзыв.",true);
     toast("Запись удалена");refreshActivist();return;}
   if(act==="del-comment"){if(!await confirmBox("Удалить комментарий?","Комментарий исчезнет из карточки.","Удалить"))return;
     const {error}=await S.sb.from("comments").delete().eq("id",id);if(error)return toast(errText(error),true);toast("Комментарий удалён");refreshActivist();return;}
@@ -819,14 +837,14 @@ document.addEventListener("submit",async e=>{
     }
     else if(kind==="signup"){
       if(!fd.fio)return setErr("#auth-err","Укажите ФИО.");
-      const {data,error}=await S.sb.auth.signUp({email:fd.email,password:fd.password,options:{data:{fio:fd.fio,role_title:fd.role_title,phone:fd.phone,tg:fd.tg,direction:fd.direction}}});
+      const {data,error}=await S.sb.auth.signUp({email:fd.email,password:fd.password,options:{data:{fio:fd.fio,phone:fd.phone,tg:fd.tg,direction:fd.direction}}});
       if(error)return setErr("#auth-err",errText(error));
       if(!data.session){authTab="login";viewAuth();toast("Проверьте почту: пришло письмо со ссылкой для подтверждения. Потом войдите.");return;}
       S.session=data.session;await loadMe();route();toast("Заявка отправлена");
     }
     else if(kind==="profile"){
       if(!fd.fio)return toast("Укажите ФИО",true);
-      const {error}=await S.sb.from("profiles").update({fio:fd.fio,role_title:fd.role_title,phone:fd.phone,tg:fd.tg,direction:fd.direction}).eq("id",S.me.id);
+      const {error}=await S.sb.from("profiles").update({fio:fd.fio,phone:fd.phone,tg:fd.tg,direction:fd.direction}).eq("id",S.me.id);
       if(error)return toast(errText(error),true);
       await loadMe();toast("Профиль сохранён");route();
     }
@@ -846,16 +864,17 @@ document.addEventListener("submit",async e=>{
     }
     else if(kind==="work"){
       const team=(f.querySelector('input[name="team"]:checked')||{}).value||"";
-      const functions=[...f.querySelectorAll('input[name="fn"]:checked')].map(x=>x.value);
       if(!fd.event)return setErr("#dlg-err","Укажите мероприятие.");
       if(!team)return setErr("#dlg-err","Выберите команду.");
-      const position=currentPos();
-      if(!position)return setErr("#dlg-err","Выберите должность (или «Другая…» и впишите её).");
-      if(!functions.length&&!fd.note)return setErr("#dlg-err","Отметьте хотя бы одну функцию или напишите, что делали, в поле «Другое».");
-      const row={event:fd.event,date:fd.date||null,team,position,functions,note:fd.note||""};
+      const position=TEAMS[team].pos.length?currentPos():"";
+      if(TEAMS[team].pos.length&&!position)return setErr("#dlg-err","Выберите должность.");
+      const row={event:fd.event,date:fd.date||null,team,position,note:fd.note||""};
       const id=f.dataset.id;let error;
-      if(id)({error}=await S.sb.from("work").update(row).eq("id",id));
-      else{
+      if(id){
+        const old=S.current.work.find(x=>x.id===id)||{};
+        if((old.functions||[]).length)row.functions=[]; // старые галочки переносятся в текст «Что делал(а)»
+        ({error}=await S.sb.from("work").update(row).eq("id",id));
+      }else{
         if(fd.self_review)row.self_review=fd.self_review;
         if(fd.go_review)row.go_review=fd.go_review;
         ({error}=await S.sb.from("work").insert({...row,activist_id:S.current.a.id}));
@@ -867,7 +886,19 @@ document.addEventListener("submit",async e=>{
       const col=f.dataset.kind==="self"?"self_review":"go_review";
       const {error}=await S.sb.from("work").update({[col]:fd.text||""}).eq("id",f.dataset.id);
       if(error)return setErr("#dlg-err",errText(error));
-      closeDialog();toast(fd.text?"Отзыв сохранён":"Отзыв удалён");refreshActivist();
+      closeDialog();toast(fd.text?"Сохранено":"Удалено");refreshActivist();
+    }
+    else if(kind==="link"){
+      const url=safeUrl(fd.url),errSel=f.dataset.id?"#dlg-err":"#link-err";
+      if(!fd.title)return setErr(errSel,"Укажите название.");
+      if(!url)return setErr(errSel,"Адрес должен начинаться с https:// или http://");
+      const row={title:fd.title,url,description:fd.description||""};
+      let error;
+      if(f.dataset.id)({error}=await S.sb.from("links").update(row).eq("id",f.dataset.id));
+      else ({error}=await S.sb.from("links").insert({...row,sort:(S.links||[]).length}));
+      if(error)return setErr(errSel,errText(error));
+      if(f.dataset.id)closeDialog();
+      toast("Ссылка сохранена");viewLinks();
     }
     else if(kind==="comment"){
       if(!fd.text)return toast("Напишите комментарий",true);

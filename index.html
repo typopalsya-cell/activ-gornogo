@@ -82,6 +82,12 @@ main{max-width:1040px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-dir
 .row:hover{border-color:var(--accent)}
 .avatar{width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--font-display);font-size:14px;font-weight:600;flex:none}
 .avatar.lg{width:64px;height:64px;font-size:20px;border-radius:16px}
+.avatar{overflow:hidden;position:relative}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.avatar.xl{width:112px;height:112px;font-size:32px;border-radius:24px}
+.photo-row{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.photo-row .photo-actions{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.photo-row .form-actions{gap:6px}
 .name{font-weight:700;font-size:16px;overflow-wrap:anywhere}
 .sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .last{display:flex;flex-direction:column;min-width:0}
@@ -305,8 +311,56 @@ function errText(e){
   if(/rate limit|too many/i.test(m))return "Слишком много попыток. Подождите пару минут.";
   if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Нет связи с базой. Проверьте интернет и попробуйте снова.";
   if(/signups? not allowed/i.test(m))return "Регистрация на сайте выключена администратором.";
-  if(/column .* does not exist|Could not find the .* (column|table)|relation .* does not exist|work_position_check/i.test(m))return "База не обновлена до новой версии. Администратору нужно ещё раз запустить supabase-setup.sql.";
+  if(/Bucket not found/i.test(m))return "Хранилище для фото не настроено. Администратору нужно ещё раз запустить supabase-setup.sql.";
+  if(/exceeded the maximum allowed size|Payload too large/i.test(m))return "Фото слишком большое.";
+  if(/mime type|invalid_mime_type/i.test(m))return "Этот формат не подходит. Выберите JPG, PNG или WebP.";
+  if(/column .* does not exist|Could not find the .* (column|table)|relation .* does not exist|work_position_check|profiles_avatar_path/i.test(m))return "База не обновлена до новой версии. Администратору нужно ещё раз запустить supabase-setup.sql.";
   return m||"Что-то пошло не так. Попробуйте ещё раз.";
+}
+
+/* ---------- фото ---------- */
+const PHOTO={};   // путь -> {url, exp}: временные ссылки на фото из закрытого хранилища
+function avatarHTML(fio,path,cls){return `<div class="avatar${cls?" "+cls:""}" aria-hidden="true"${path?` data-photo="${esc(path)}"`:""}>${esc(initials(fio))}</div>`;}
+async function hydratePhotos(){
+  if(!S.sb)return;
+  const els=[...document.querySelectorAll("[data-photo]")];if(!els.length)return;
+  const now=Date.now(),need=[...new Set(els.map(e=>e.dataset.photo).filter(p=>!PHOTO[p]||PHOTO[p].exp<now))];
+  if(need.length){
+    try{const {data,error}=await S.sb.storage.from("avatars").createSignedUrls(need,3600);
+      if(!error&&data)data.forEach(d=>{if(d&&d.signedUrl&&d.path)PHOTO[d.path]={url:d.signedUrl,exp:now+50*60*1000};});}catch(e){}
+  }
+  for(const e of els){
+    const ph=PHOTO[e.dataset.photo];
+    if(!ph||!e.isConnected||e.querySelector("img"))continue;
+    const img=new Image();img.alt="";img.decoding="async";
+    img.onload=()=>{if(e.isConnected&&!e.querySelector("img"))e.appendChild(img);};
+    img.src=ph.url;
+  }
+}
+// Обрезаем фото до квадрата по центру и уменьшаем до 512×512 JPEG, чтобы файл был лёгким
+async function fileToSquareJpeg(file,size=512){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
+    const side=Math.min(img.naturalWidth,img.naturalHeight);if(!side)throw new Error("empty");
+    const out=Math.min(size,side),c=document.createElement("canvas");c.width=c.height=out;
+    c.getContext("2d").drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,out,out);
+    return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("blob")),"image/jpeg",0.85));
+  }finally{URL.revokeObjectURL(url);}
+}
+async function uploadAvatar(file){
+  if(!file)return;
+  if(file.size>20*1024*1024)return toast("Файл слишком большой: выберите фото до 20 МБ.",true);
+  let blob;
+  try{blob=await fileToSquareJpeg(file);}catch(e){return toast("Не удалось прочитать фото. Выберите файл JPG или PNG.",true);}
+  const path=`${S.me.id}/avatar-${Date.now()}.jpg`;
+  const up=await S.sb.storage.from("avatars").upload(path,blob,{contentType:"image/jpeg",upsert:false});
+  if(up.error)return toast(errText(up.error),true);
+  const old=S.me.avatar;
+  const {error}=await S.sb.from("profiles").update({avatar:path}).eq("id",S.me.id);
+  if(error){await S.sb.storage.from("avatars").remove([path]);return toast(errText(error),true);}
+  if(old)await S.sb.storage.from("avatars").remove([old]);
+  await loadMe();S.listLoaded=false;toast("Фото обновлено");viewProfile();
 }
 
 /* ---------- state ---------- */
@@ -445,7 +499,7 @@ function fillDatalists(works){
 async function loadList(force){
   if(S.listLoaded&&!force)return;
   const [a,w]=await Promise.all([
-    S.sb.from("activists").select("id,fio,grp,tg,vk,email,phone,user_id").order("fio").limit(5000),
+    S.sb.from("activists").select("id,fio,grp,tg,vk,email,phone,user_id,avatar").order("fio").limit(5000),
     S.sb.from(isActivist()?"work_public":"work").select("id,activist_id,event,position,date,team,note").limit(20000)
   ]);
   if(a.error||w.error){toast(errText(a.error||w.error),true);return;}
@@ -533,11 +587,12 @@ function renderResults(){
     const sub=[a.grp,tg?"@"+tg:""].filter(Boolean).map(esc).join(" · ")||"&nbsp;";
     const head=lw?[lw.position,teamOf(lw)].filter(Boolean).map(esc).join(" · "):"";
     return `<a class="row" href="#a-${esc(a.id)}">
-      <div class="avatar" aria-hidden="true">${esc(initials(a.fio))}</div>
+      ${avatarHTML(a.fio,a.avatar)}
       <div style="min-width:0"><div class="name">${esc(a.fio)}</div><div class="sub">${sub}</div></div>
       <div class="last">${lw?`<span class="pos">${head}</span><span class="ev">${esc(lw.event)}${lw.date?", "+fmtDate(lw.date):""}</span>`:`<span class="ev">Мероприятий пока нет</span>`}</div>
       <div class="count">${ws.length?plural(ws.length,"мероприятие","мероприятия","мероприятий"):""}</div></a>`;}).join("")
     +(list.length>300?`<p class="muted small">Показаны первые 300 из ${list.length}. Уточните запрос.</p>`:"");
+  hydratePhotos();
 }
 
 /* ---------- activist card ---------- */
@@ -613,7 +668,7 @@ function renderActivist(){
   ${mine?"":`<a class="back" href="#search">← К поиску</a>`}
   ${S.current.isOwner&&isActivist()?`<div class="intro-card">Это ваша карточка. Участие в мероприятиях, комментарий о вашей работе и отзывы вносят ГО, организаторы, капитаны и кураторы. Телефон, Telegram, ВК и группу вы можете поменять в <a href="#profile">«Моём профиле»</a> — они сразу обновятся и здесь. Отзывы о вас видите только вы и организаторы.</div>`:""}
   <div class="person-head">
-    <div class="avatar lg" aria-hidden="true">${esc(initials(a.fio))}</div>
+    ${avatarHTML(a.fio,a.avatar,"lg")}
     <div class="grow"><h1>${esc(a.fio)}</h1><div class="sub">${[a.grp,work.length?plural(work.length,"мероприятие","мероприятия","мероприятий"):"",teams.join(", ")].filter(Boolean).map(esc).join(" · ")}</div></div>
     ${p.editCard||p.delCard?`<div class="form-actions">${p.editCard?`<button class="btn" type="button" data-act="edit">Редактировать контакты</button>`:""}${p.delCard?`<button class="btn danger" type="button" data-act="del-activist">Удалить</button>`:""}</div>`:""}
   </div>
@@ -649,6 +704,7 @@ function renderActivist(){
       </section>`:""}
     </div>
   </div>`;
+  hydratePhotos();
 }
 async function refreshActivist(){if(S.current){S.listLoaded=false;await viewActivist(S.current.a.id,S.current.mine);}}
 
@@ -735,13 +791,31 @@ function viewProfile(){
   const p=S.me,a=ACCESS[p.access]||["",""];
   $("#view").innerHTML=`<section><h1>Мой профиль</h1><p class="lede">Данные вашего аккаунта. ФИО стоит под вашими отзывами и комментариями.${isActivist()?" ФИО, телефон, Telegram, ВК и группа отсюда автоматически переносятся в вашу карточку активиста.":""}</p></section>
   <section class="card"><div class="card-h"><h2>${esc(p.email||"")}</h2><span class="chip ${a[1]}">${esc(a[0])}</span></div>
-  <form data-form="profile"><div class="fields">
+  <div class="photo-row">
+    ${avatarHTML(p.fio,p.avatar,"xl")}
+    <div class="photo-actions">
+      <div class="form-actions">
+        <button class="btn" type="button" data-act="pick-photo">${p.avatar?"Заменить фото":"Загрузить фото"}</button>
+        ${p.avatar?`<button class="btn danger" type="button" data-act="del-photo">Удалить фото</button>`:""}
+      </div>
+      <input id="p-photo" type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden>
+      <p class="hint">JPG, PNG или WebP. Фото обрежется до квадрата по центру. Его увидят все, у кого есть доступ к базе${isActivist()?", а ещё оно появится в вашей карточке":""}.</p>
+    </div>
+  </div>
+  <form data-form="profile" class="subform"><div class="fields">
     <label class="full" for="p-fio">ФИО<input id="p-fio" name="fio" required maxlength="200" value="${esc(p.fio)}"></label>
     <label for="p-phone">Телефон<input id="p-phone" name="phone" type="tel" maxlength="50" value="${esc(p.phone)}"></label>
     <label for="p-tg">Telegram<input id="p-tg" name="tg" maxlength="100" value="${esc(p.tg)}"></label>
     <label for="p-vk">ВКонтакте<input id="p-vk" name="vk" maxlength="200" value="${esc(p.vk)}" placeholder="vk.com/id123"></label>
     <label class="full" for="p-dir">Группа<input id="p-dir" name="direction" maxlength="50" value="${esc(p.direction)}" placeholder="ГГ-24-1"></label>
   </div><div class="form-actions"><button class="btn primary" type="submit">Сохранить</button></div></form></section>`;
+  $("#p-photo").addEventListener("change",async e=>{
+    const f=e.target.files&&e.target.files[0];e.target.value="";
+    const b=document.querySelector('[data-act="pick-photo"]');if(b){b.disabled=true;b.textContent="Загружаю…";}
+    await uploadAvatar(f);
+    if(b&&b.isConnected){b.disabled=false;b.textContent=S.me.avatar?"Заменить фото":"Загрузить фото";}
+  });
+  hydratePhotos();
 }
 
 /* ---------- users (admin) ---------- */
@@ -805,6 +879,15 @@ document.addEventListener("click",async e=>{
   if(act==="logout"){await S.sb.auth.signOut();S.session=null;S.me=null;S.listLoaded=false;location.hash="";route();return;}
   if(act==="recheck"){b.disabled=true;await loadMe();route();if(!canView()&&!isActivist())toast("Доступ пока не выдан");return;}
   if(act==="reset-filters"){S.fTeam="";S.fPos="";S.fSem="";S.fYear="";S.query="";viewSearch();return;}
+  if(act==="pick-photo"){const inp=$("#p-photo");if(inp)inp.click();return;}
+  if(act==="del-photo"){
+    if(!await confirmBox("Удалить фото?","Вместо фото снова будут инициалы.","Удалить"))return;
+    const old=S.me.avatar;
+    const {error}=await S.sb.from("profiles").update({avatar:""}).eq("id",S.me.id);
+    if(error)return toast(errText(error),true);
+    if(old)await S.sb.storage.from("avatars").remove([old]);
+    await loadMe();S.listLoaded=false;toast("Фото удалено");viewProfile();return;
+  }
   if(act==="new")return activistForm(null);
   if(act==="edit")return activistForm(S.current&&S.current.a);
   if(act==="add-work")return workForm(null);

@@ -275,7 +275,7 @@ const semShort=d=>{const s=semOf(d);return s?`${s.sem==="Осенний"?"осе
 const REVIEW_GO="Отзыв ГО / организатора / капитана / куратора";
 const COMMENT_ROLES=["ГО","Организатор","Капитан","Куратор","Другое"];
 const ACCESS={pending:["Ждёт подтверждения","wait"],activist:["Активист",""],viewer:["Просмотр",""],editor:["Редактор","ok"],admin:["Администратор","acc"],blocked:["Доступ закрыт","bad"]};
-const ACCESS_HELP={pending:"ничего не видит",activist:"ведёт только своё портфолио",viewer:"поиск и все карточки",editor:"вносит данные и пишет отзывы (ГО, организаторы, капитаны, кураторы)",admin:"всё + управляет доступом",blocked:"ничего не видит"};
+const ACCESS_HELP={pending:"ничего не видит",activist:"смотрит свою карточку и карточки всех активистов без отзывов, правит только свой профиль",viewer:"поиск и все карточки",editor:"вносит данные и пишет отзывы (ГО, организаторы, капитаны, кураторы)",admin:"всё + управляет доступом",blocked:"ничего не видит"};
 const roleCls=r=>({"Куратор":"kur","Капитан":"kap","Другое":"oth"}[r]||"");
 const teamCls=t=>(TEAMS[t]&&TEAMS[t].cls)||"pos";
 
@@ -316,6 +316,8 @@ const canView=()=>["viewer","editor","admin"].includes(access());
 const canEdit=()=>["editor","admin"].includes(access());
 const isAdmin=()=>access()==="admin";
 const isActivist=()=>access()==="activist";
+const canBrowse=()=>canView()||isActivist();   // кто видит поиск и карточки
+const rawHash=()=>decodeURIComponent(location.hash.replace(/^#/,""));
 
 /* ---------- boot ---------- */
 async function boot(){
@@ -357,8 +359,12 @@ function route(){
   if(!S.me){viewNoProfile();return;}
   const r=parseRoute();
   if(r.v==="profile"){viewProfile();return;}
-  if((isActivist()||canView())&&r.v==="links"){viewLinks();return;}
-  if(isActivist()){viewMyCard();return;}
+  if(canBrowse()&&r.v==="links"){viewLinks();return;}
+  if(isActivist()){
+    if(r.v==="a"){viewActivist(r.id);return;}
+    if(rawHash()==="search"){viewSearch();return;}
+    viewMyCard();return;                       // по умолчанию активист попадает в свою карточку
+  }
   if(!canView()){viewWaiting();return;}
   if(r.v==="users"&&isAdmin()){viewUsers();return;}
   if(r.v==="a"){viewActivist(r.id);return;}
@@ -367,13 +373,13 @@ function route(){
 function renderTop(){
   const r=S.session&&S.me?parseRoute():null;
   let cur=r?(r.v==="a"?"search":r.v):"";
-  if(isActivist()&&!["profile","links"].includes(cur))cur="my";
+  if(isActivist()&&cur==="search"&&r.v!=="a"&&rawHash()!=="search")cur="my";
   const link=(h,t)=>`<a href="#${h}"${cur===h?' aria-current="page"':""}>${t}</a>`;
   let nav="";
   if(S.session&&S.me){
-    if(isActivist())nav+=link("my","Моё портфолио");
-    if(canView())nav+=link("search","Поиск");
-    if(isActivist()||canView())nav+=link("links","Ссылки");
+    if(isActivist())nav+=link("my","Моя карточка");
+    if(canBrowse())nav+=link("search","Поиск");
+    if(canBrowse())nav+=link("links","Ссылки");
     if(isAdmin())nav+=link("users","Пользователи");
     nav+=link("profile","Мой профиль");
   }
@@ -440,7 +446,7 @@ async function loadList(force){
   if(S.listLoaded&&!force)return;
   const [a,w]=await Promise.all([
     S.sb.from("activists").select("id,fio,grp,tg,vk,email,phone,user_id").order("fio").limit(5000),
-    S.sb.from("work").select("id,activist_id,event,position,date,team,note").limit(20000)
+    S.sb.from(isActivist()?"work_public":"work").select("id,activist_id,event,position,date,team,note").limit(20000)
   ]);
   if(a.error||w.error){toast(errText(a.error||w.error),true);return;}
   S.activists=a.data||[];S.work=w.data||[];S.listLoaded=true;
@@ -536,7 +542,7 @@ function renderResults(){
 
 /* ---------- activist card ---------- */
 async function viewMyCard(){
-  document.title="Моё портфолио · Актив Горного";
+  document.title="Моя карточка · Актив Горного";
   $("#view").innerHTML=`<div class="skeleton"></div>`;
   const {data,error}=await S.sb.from("activists").select("id").eq("user_id",S.me.id).maybeSingle();
   if(error){toast(errText(error),true);}
@@ -545,29 +551,32 @@ async function viewMyCard(){
 }
 async function viewActivist(id,mine){
   if(!mine)$("#view").innerHTML=`<a class="back" href="#search">← К поиску</a><div class="skeleton"></div>`;
-  const reqs=[
-    S.sb.from("activists").select("*").eq("id",id).maybeSingle(),
-    S.sb.from("work").select("*").eq("activist_id",id).order("date",{ascending:false,nullsFirst:false}),
-  ];
-  if(canView())reqs.push(S.sb.from("comments").select("id,role,text,created_at,author_id,author:profiles(fio,role_title)").eq("activist_id",id).order("created_at",{ascending:false}));
-  const [a,w,c]=await Promise.all(reqs);
-  const r=parseRoute();if(!mine&&r.id!==id)return;
-  const err=a.error||w.error||(c&&c.error);if(err)toast(errText(err),true);
+  const a=await S.sb.from("activists").select("*").eq("id",id).maybeSingle();
+  if(a.error)toast(errText(a.error),true);
   if(!a.data){$("#view").innerHTML=`<a class="back" href="#search">← К поиску</a><div class="empty"><strong>Карточка не найдена</strong><span>Возможно, активиста удалили из базы.</span></div>`;return;}
-  S.current={a:a.data,work:w.data||[],comments:(c&&c.data)||[],mine:!!mine,isOwner:a.data.user_id&&a.data.user_id===S.me.id};
-  if(canView()&&!S.listLoaded)loadList();else if(!canView()){S.work=S.current.work;fillDatalists(S.work);}
+  const own=!!(a.data.user_id&&a.data.user_id===S.me.id);
+  // активист видит отзывы только в своей карточке; чужое участие берём из work_public (там отзывов нет)
+  const workTable=isActivist()&&!own?"work_public":"work";
+  const reqs=[S.sb.from(workTable).select("*").eq("activist_id",id).order("date",{ascending:false,nullsFirst:false})];
+  if(canView())reqs.push(S.sb.from("comments").select("id,role,text,created_at,author_id,author:profiles(fio,role_title)").eq("activist_id",id).order("created_at",{ascending:false}));
+  const [w,c]=await Promise.all(reqs);
+  const r=parseRoute();if(!mine&&r.id!==id)return;
+  const err=w.error||(c&&c.error);if(err)toast(errText(err),true);
+  S.current={a:a.data,work:w.data||[],comments:(c&&c.data)||[],mine:!!mine||(isActivist()&&own),isOwner:own};
+  if(canBrowse()&&!S.listLoaded)loadList();
   renderActivist();
 }
+// Менять карточки и участие могут только редакторы и администратор.
+// Активист только смотрит: свою карточку — с отзывами, чужие — без отзывов.
 function perms(){const c=S.current,own=!!c.isOwner,ed=canEdit();
-  const noAccount=!c.a.user_id;
-  return {editCard:ed||own,delCard:ed,addWork:ed||own,editEntry:ed||own,
-    writeSelf:own||(ed&&noAccount),   // за активиста без аккаунта комментарий может внести редактор
-    selfByStaff:!own&&ed&&noAccount,
-    writeGo:ed&&!own};}
+  return {editCard:ed,delCard:ed,addWork:ed,editEntry:ed,
+    writeSelf:ed,selfByStaff:ed,       // комментарий о своей работе вносится со слов активиста
+    writeGo:ed&&!own,
+    showReviews:canView()||own};}
 function entryHTML(w,p){
   const legacy=(w.functions||[]).join(", ");
   const did=[w.note,legacy].filter(Boolean).join("\n");
-  const canDel=canEdit()||(S.current.isOwner&&!w.go_review);
+  const canDel=canEdit();
   const t=teamOf(w),sem=semShort(w.date);
   return `<article class="entry">
     <div class="entry-h">
@@ -578,10 +587,10 @@ function entryHTML(w,p){
       ${p.editEntry||canDel?`<span class="acts">${p.editEntry?`<button class="btn ghost" type="button" data-act="edit-work" data-id="${esc(w.id)}">Изменить</button>`:""}${canDel?`<button class="btn danger" type="button" data-act="del-work" data-id="${esc(w.id)}">Удалить</button>`:""}</span>`:""}
     </div>
     <div class="did"><span class="rv-h">Что делал(а)</span>${did?`<p>${esc(did)}</p>`:`<span class="none">Не заполнено</span>`}</div>
-    <div class="reviews">
+    ${p.showReviews?`<div class="reviews">
       <div class="rv self">
         <span class="rv-h">Комментарий о своей работе</span>
-        ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${w.self_review_name?`со слов активиста, внёс(ла) ${esc(w.self_review_name)} · `:""}${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">${!p.writeSelf&&S.current.a.user_id&&!S.current.isOwner?"Пишет сам активист в своём аккаунте":"Пока не написан"}</span>`}
+        ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${w.self_review_name?`со слов активиста, внёс(ла) ${esc(w.self_review_name)} · `:""}${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">Пока не написан</span>`}
         ${p.writeSelf?`<button class="btn" type="button" data-act="review" data-kind="self" data-id="${esc(w.id)}">${w.self_review?"Изменить":"Написать комментарий"}</button>`:""}
       </div>
       <div class="rv go">
@@ -589,7 +598,7 @@ function entryHTML(w,p){
         ${w.go_review?`<p>${esc(w.go_review)}</p><span class="rv-by">${esc(w.go_review_name||"Без имени")} · ${esc(fmtTs(w.go_review_at))}</span>`:`<span class="none">Пока нет отзыва</span>`}
         ${p.writeGo?`<button class="btn" type="button" data-act="review" data-kind="go" data-id="${esc(w.id)}">${w.go_review?"Изменить отзыв":"Оставить отзыв"}</button>`:""}
       </div>
-    </div>
+    </div>`:""}
   </article>`;
 }
 function renderActivist(){
@@ -602,10 +611,10 @@ function renderActivist(){
   const reviewed=work.filter(w=>w.go_review).length;
   $("#view").innerHTML=`
   ${mine?"":`<a class="back" href="#search">← К поиску</a>`}
-  ${mine?`<div class="intro-card">Это ваше портфолио. Добавляйте мероприятия, пишите, что вы там делали, и оставляйте комментарий о своей работе. ГО, организатор, капитан или куратор оставит отзыв со своей стороны. Свой комментарий можете менять только вы, а их отзыв — только они.</div>`:""}
+  ${S.current.isOwner&&isActivist()?`<div class="intro-card">Это ваша карточка. Участие в мероприятиях, комментарий о вашей работе и отзывы вносят ГО, организаторы, капитаны и кураторы. Телефон, Telegram, ВК и группу вы можете поменять в <a href="#profile">«Моём профиле»</a> — они сразу обновятся и здесь. Отзывы о вас видите только вы и организаторы.</div>`:""}
   <div class="person-head">
     <div class="avatar lg" aria-hidden="true">${esc(initials(a.fio))}</div>
-    <div class="grow"><h1>${esc(a.fio)}</h1><div class="sub">${[a.grp,work.length?plural(work.length,"мероприятие","мероприятия","мероприятий"):"",teams.join(", "),a.user_id&&!mine?"заполняет сам(а)":""].filter(Boolean).map(esc).join(" · ")}</div></div>
+    <div class="grow"><h1>${esc(a.fio)}</h1><div class="sub">${[a.grp,work.length?plural(work.length,"мероприятие","мероприятия","мероприятий"):"",teams.join(", ")].filter(Boolean).map(esc).join(" · ")}</div></div>
     ${p.editCard||p.delCard?`<div class="form-actions">${p.editCard?`<button class="btn" type="button" data-act="edit">Редактировать контакты</button>`:""}${p.delCard?`<button class="btn danger" type="button" data-act="del-activist">Удалить</button>`:""}</div>`:""}
   </div>
   <div class="grid">
@@ -620,7 +629,7 @@ function renderActivist(){
     </dl></section>
     <div class="stack">
       <section class="card">
-        <div class="card-h"><h2>Участие в мероприятиях</h2><span class="muted small">${work.length?`${plural(work.length,"запись","записи","записей")} · отзывов: ${reviewed}`:""}</span></div>
+        <div class="card-h"><h2>Участие в мероприятиях</h2><span class="muted small">${work.length?`${plural(work.length,"запись","записи","записей")}${p.showReviews?` · отзывов: ${reviewed}`:""}`:""}</span></div>
         ${p.addWork?`<div><button class="btn primary" type="button" data-act="add-work">+ Добавить участие</button></div>`:""}
         ${work.length?`<div class="entries">${work.map(w=>entryHTML(w,p)).join("")}</div>`:`<p class="muted" style="margin:0">Пока нет записей о мероприятиях.</p>`}
       </section>
@@ -667,7 +676,7 @@ function workForm(w){
     <fieldset><legend>Команда</legend><div class="checks" id="w-teams">${TEAM_KEYS.map((k,i)=>`<label class="check" for="team-${i}"><input type="radio" id="team-${i}" name="team" value="${esc(k)}" required${team===k?" checked":""}><span>${esc(k)}</span></label>`).join("")}</div></fieldset>
     <fieldset><legend>Должность</legend><div id="w-poss">${posHTML(team,w.position)}</div></fieldset>
     <label for="w-note">Что делал(а) на мероприятии<textarea id="w-note" name="note" maxlength="2000" rows="4" placeholder="Например: снимала церемонию открытия, отобрала и обработала 150 фото, выложила альбом в ВК">${esc([w.note,legacy].filter(Boolean).join("\n"))}</textarea></label>
-    ${!w.id&&p.writeSelf?`<label for="w-self">Комментарий о своей работе${p.selfByStaff?" — со слов активиста":""} (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
+    ${!w.id&&p.writeSelf?`<label for="w-self">Комментарий о своей работе — со слов активиста (можно позже)<textarea id="w-self" name="self_review" maxlength="3000" placeholder="Что получилось, что было сложно, чему научился(ась)"></textarea></label>`:""}
     ${!w.id&&p.writeGo?`<label for="w-go">${REVIEW_GO} о работе (можно позже)<textarea id="w-go" name="go_review" maxlength="3000" placeholder="Как человек справился со своими задачами"></textarea></label>`:""}
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">${w.id?"Сохранить":"Добавить"}</button><button class="btn" type="button" data-act="close">Отмена</button></div>
@@ -683,8 +692,8 @@ function reviewForm(id,kind){
   openDialog(`<h2 id="dlg-title">${self?"Комментарий о своей работе":REVIEW_GO}</h2>
   <p class="hint">${esc(w.event)}${w.date?", "+fmtDate(w.date):""}${w.position?" · "+esc(w.position):""}</p>
   <form data-form="review" data-id="${esc(id)}" data-kind="${self?"self":"go"}">
-    <label for="r-text">${self?(perms().selfByStaff?"Как активист сам оценивает свою работу":"Как прошла ваша работа"):"Как человек справился со своими задачами"}<textarea id="r-text" name="text" maxlength="3000" rows="6" placeholder="${self?"Что получилось, что было сложно, чему научился(ась)":"Сильные стороны, что стоит подтянуть, взяли бы снова?"}">${esc(self?w.self_review:w.go_review)}</textarea></label>
-    <p class="hint">${self?(perms().selfByStaff?"У этой карточки нет аккаунта, поэтому вы записываете комментарий со слов активиста. Под ним будет указано ваше имя. Если активист зарегистрируется и получит доступ к карточке, дальше комментарии будет писать он сам.":"Этот текст сможете изменить только вы. Его видят ГО, организаторы, капитаны и кураторы, но править не могут."):"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить, очистите поле и сохраните.</p>
+    <label for="r-text">${self?"Как активист сам оценивает свою работу":"Как человек справился со своими задачами"}<textarea id="r-text" name="text" maxlength="3000" rows="6" placeholder="${self?"Что получилось, что было сложно, чему научился(ась)":"Сильные стороны, что стоит подтянуть, взяли бы снова?"}">${esc(self?w.self_review:w.go_review)}</textarea></label>
+    <p class="hint">${self?"Вы записываете комментарий со слов активиста. Под ним будет указано ваше имя.":"Отзыв будет подписан вашим именем. Активист его увидит, но изменить не сможет."} Чтобы удалить, очистите поле и сохраните.</p>
     <p class="formerr" id="dlg-err"></p>
     <div class="form-actions"><button class="btn primary" type="submit">Сохранить</button><button class="btn" type="button" data-act="close">Отмена</button></div>
   </form>`);
@@ -724,12 +733,13 @@ function linkForm(l){
 function viewProfile(){
   document.title="Мой профиль · Актив Горного";
   const p=S.me,a=ACCESS[p.access]||["",""];
-  $("#view").innerHTML=`<section><h1>Мой профиль</h1><p class="lede">Данные вашего аккаунта. ФИО стоит под вашими отзывами и комментариями.${isActivist()?" Контакты в портфолио меняются на странице «Моё портфолио».":""}</p></section>
+  $("#view").innerHTML=`<section><h1>Мой профиль</h1><p class="lede">Данные вашего аккаунта. ФИО стоит под вашими отзывами и комментариями.${isActivist()?" ФИО, телефон, Telegram, ВК и группа отсюда автоматически переносятся в вашу карточку активиста.":""}</p></section>
   <section class="card"><div class="card-h"><h2>${esc(p.email||"")}</h2><span class="chip ${a[1]}">${esc(a[0])}</span></div>
   <form data-form="profile"><div class="fields">
     <label class="full" for="p-fio">ФИО<input id="p-fio" name="fio" required maxlength="200" value="${esc(p.fio)}"></label>
     <label for="p-phone">Телефон<input id="p-phone" name="phone" type="tel" maxlength="50" value="${esc(p.phone)}"></label>
     <label for="p-tg">Telegram<input id="p-tg" name="tg" maxlength="100" value="${esc(p.tg)}"></label>
+    <label for="p-vk">ВКонтакте<input id="p-vk" name="vk" maxlength="200" value="${esc(p.vk)}" placeholder="vk.com/id123"></label>
     <label class="full" for="p-dir">Группа<input id="p-dir" name="direction" maxlength="50" value="${esc(p.direction)}" placeholder="ГГ-24-1"></label>
   </div><div class="form-actions"><button class="btn primary" type="submit">Сохранить</button></div></form></section>`;
 }
@@ -846,7 +856,7 @@ document.addEventListener("submit",async e=>{
     }
     else if(kind==="profile"){
       if(!fd.fio)return toast("Укажите ФИО",true);
-      const {error}=await S.sb.from("profiles").update({fio:fd.fio,phone:fd.phone,tg:fd.tg,direction:fd.direction}).eq("id",S.me.id);
+      const {error}=await S.sb.from("profiles").update({fio:fd.fio,phone:fd.phone,tg:fd.tg,vk:fd.vk,direction:fd.direction}).eq("id",S.me.id);
       if(error)return toast(errText(error),true);
       await loadMe();toast("Профиль сохранён");route();
     }

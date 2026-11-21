@@ -409,7 +409,7 @@ function viewAuth(){
           <label class="full" for="s-fio">ФИО полностью<input id="s-fio" name="fio" required autocomplete="name" placeholder="Петров Иван Сергеевич"></label>
           <label for="s-phone">Телефон<input id="s-phone" name="phone" type="tel" autocomplete="tel" placeholder="+7 900 000-00-00"></label>
           <label for="s-tg">Telegram<input id="s-tg" name="tg" placeholder="@nickname"></label>
-          <label class="full" for="s-dir">Команда / направление<input id="s-dir" name="direction" placeholder="Медиа, Посвящение"></label>
+          <label class="full" for="s-dir">Группа<input id="s-dir" name="direction" maxlength="50" placeholder="ГГ-24-1"></label>
           <label class="full" for="s-email">Почта<input id="s-email" name="email" type="email" autocomplete="email" required></label>
           <label class="full" for="s-pass">Пароль (минимум 6 символов)<input id="s-pass" name="password" type="password" autocomplete="new-password" minlength="6" required></label>
         </div>
@@ -730,7 +730,7 @@ function viewProfile(){
     <label class="full" for="p-fio">ФИО<input id="p-fio" name="fio" required maxlength="200" value="${esc(p.fio)}"></label>
     <label for="p-phone">Телефон<input id="p-phone" name="phone" type="tel" maxlength="50" value="${esc(p.phone)}"></label>
     <label for="p-tg">Telegram<input id="p-tg" name="tg" maxlength="100" value="${esc(p.tg)}"></label>
-    <label class="full" for="p-dir">Команда / направление<input id="p-dir" name="direction" maxlength="300" value="${esc(p.direction)}"></label>
+    <label class="full" for="p-dir">Группа<input id="p-dir" name="direction" maxlength="50" value="${esc(p.direction)}" placeholder="ГГ-24-1"></label>
   </div><div class="form-actions"><button class="btn primary" type="submit">Сохранить</button></div></form></section>`;
 }
 
@@ -745,11 +745,11 @@ async function viewUsers(){
   const list=(data||[]).sort((x,y)=>(order[x.access]??9)-(order[y.access]??9));
   const pend=list.filter(u=>u.access==="pending").length;
   $("#users-card").innerHTML=`<div class="card-h"><h2>Все пользователи</h2><span class="muted small">${pend?plural(pend,"заявка ждёт","заявки ждут","заявок ждут")+" подтверждения":"новых заявок нет"}</span></div>
-  ${list.length?`<div class="tablewrap"><table><thead><tr><th>ФИО</th><th>Контакты</th><th>Направление</th><th>Доступ</th></tr></thead><tbody>
+  ${list.length?`<div class="tablewrap"><table><thead><tr><th>ФИО</th><th>Группа</th><th>Контакты</th><th>Доступ</th></tr></thead><tbody>
   ${list.map(u=>{const tg=tgHandle(u.tg);const self=u.id===S.me.id;
     return `<tr><td><b>${esc(u.fio||"Без имени")}</b><div class="sub">${esc(u.email)} · ${esc(fmtTs(u.created_at))}</div></td>
-    <td class="small">${esc(u.phone)}${tg?`<br><a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:""}</td>
     <td class="small">${esc(u.direction)}</td>
+    <td class="small">${esc(u.phone)}${tg?`<br><a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:""}</td>
     <td>${self?`<span class="chip acc">Это вы</span>`:`<select class="access" data-user="${esc(u.id)}" aria-label="Доступ для ${esc(u.fio)}">${Object.entries(ACCESS).map(([k,v])=>`<option value="${k}"${u.access===k?" selected":""}>${v[0]}</option>`).join("")}</select>`}</td></tr>`;}).join("")}
   </tbody></table></div>`:`<p class="muted">Пользователей пока нет.</p>`}`;
 }

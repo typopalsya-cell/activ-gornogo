@@ -279,7 +279,6 @@ function semOf(d){const m=/^(\d{4})-(\d{2})/.exec(d||"");if(!m)return null;const
   return {sem:mo>=9?"Осенний":"Весенний",year:y};}
 const semShort=d=>{const s=semOf(d);return s?`${s.sem==="Осенний"?"осень":"весна"} ${s.year}`:"";};
 const REVIEW_GO="Отзыв ГО / организатора / капитана / куратора";
-const COMMENT_ROLES=["ГО","Организатор","Капитан","Куратор","Другое"];
 const ACCESS={pending:["Ждёт подтверждения","wait"],activist:["Активист",""],viewer:["Просмотр",""],editor:["Редактор","ok"],admin:["Администратор","acc"],blocked:["Доступ закрыт","bad"]};
 const ACCESS_HELP={pending:"ничего не видит",activist:"смотрит свою карточку и карточки всех активистов без отзывов, правит только свой профиль",viewer:"поиск и все карточки",editor:"вносит данные и пишет отзывы (ГО, организаторы, капитаны, кураторы)",admin:"всё + управляет доступом",blocked:"ничего не видит"};
 const roleCls=r=>({"Куратор":"kur","Капитан":"kap","Другое":"oth"}[r]||"");
@@ -613,11 +612,10 @@ async function viewActivist(id,mine){
   // активист видит отзывы только в своей карточке; чужое участие берём из work_public (там отзывов нет)
   const workTable=isActivist()&&!own?"work_public":"work";
   const reqs=[S.sb.from(workTable).select("*").eq("activist_id",id).order("date",{ascending:false,nullsFirst:false})];
-  if(canView())reqs.push(S.sb.from("comments").select("id,role,text,created_at,author_id,author:profiles(fio,role_title)").eq("activist_id",id).order("created_at",{ascending:false}));
-  const [w,c]=await Promise.all(reqs);
+  const [w]=await Promise.all(reqs);
   const r=parseRoute();if(!mine&&r.id!==id)return;
-  const err=w.error||(c&&c.error);if(err)toast(errText(err),true);
-  S.current={a:a.data,work:w.data||[],comments:(c&&c.data)||[],mine:!!mine||(isActivist()&&own),isOwner:own};
+  if(w.error)toast(errText(w.error),true);
+  S.current={a:a.data,work:w.data||[],mine:!!mine||(isActivist()&&own),isOwner:own};
   if(canBrowse()&&!S.listLoaded)loadList();
   renderActivist();
 }
@@ -657,12 +655,11 @@ function entryHTML(w,p){
   </article>`;
 }
 function renderActivist(){
-  const {a,work,comments,mine}=S.current,p=perms();
+  const {a,work,mine}=S.current,p=perms();
   if(!mine)document.title=a.fio+" · Актив Горного";
   const tg=tgHandle(a.tg);
   const teams=[...new Set(work.map(teamOf).filter(Boolean))];
   const item=(label,html,copy)=>`<div><dt>${label}</dt><dd>${html||'<span class="muted">не указано</span>'}${html&&copy?`<button class="copy" type="button" data-copy="${esc(copy)}">копировать</button>`:""}</dd></div>`;
-  const myRole=COMMENT_ROLES.includes(S.me.role_title)?S.me.role_title:"ГО";
   const reviewed=work.filter(w=>w.go_review).length;
   $("#view").innerHTML=`
   ${mine?"":`<a class="back" href="#search">← К поиску</a>`}
@@ -688,20 +685,6 @@ function renderActivist(){
         ${p.addWork?`<div><button class="btn primary" type="button" data-act="add-work">+ Добавить участие</button></div>`:""}
         ${work.length?`<div class="entries">${work.map(w=>entryHTML(w,p)).join("")}</div>`:`<p class="muted" style="margin:0">Пока нет записей о мероприятиях.</p>`}
       </section>
-      ${canView()?`<section class="card">
-        <h2>Комментарии ГО, организаторов, капитанов и кураторов</h2>
-        <p class="hint">Общие внутренние заметки о человеке. Сам активист их не видит.</p>
-        ${comments.length?`<div class="comments">${comments.map(c=>{const cls=roleCls(c.role);const minec=c.author_id===S.me.id;
-          return `<div class="comment ${cls}"><div class="comment-h"><span class="tag ${cls}">${esc(c.role)}</span><span class="who">${esc((c.author&&c.author.fio)||"Удалённый пользователь")}</span><span class="when">${esc(fmtTs(c.created_at))}</span>${(isAdmin()||(minec&&canEdit()))?`<button class="btn danger" type="button" data-act="del-comment" data-id="${esc(c.id)}">Удалить</button>`:""}</div><p>${esc(c.text)}</p></div>`;}).join("")}</div>`:`<p class="muted" style="margin:0">Комментариев пока нет.</p>`}
-        ${canEdit()?`<form class="subform" data-form="comment">
-          <h3>Оставить комментарий</h3>
-          <div class="fields">
-            <label for="c-role">От кого<select id="c-role" name="role">${COMMENT_ROLES.map(r=>`<option${r===myRole?" selected":""}>${r}</option>`).join("")}</select></label>
-            <label class="full" for="c-text">Комментарий<textarea id="c-text" name="text" required maxlength="5000" placeholder="Ответственный, хорошо держит команду. Рекомендую на должность капитана."></textarea></label>
-          </div>
-          <div class="form-actions"><button class="btn primary" type="submit">Опубликовать</button></div>
-        </form>`:""}
-      </section>`:""}
     </div>
   </div>`;
   hydratePhotos();
@@ -914,8 +897,6 @@ document.addEventListener("click",async e=>{
     const {error,count}=await S.sb.from("work").delete({count:"exact"}).eq("id",id);if(error)return toast(errText(error),true);
     if(count===0)return toast("Не удалось удалить: по записи уже есть отзыв.",true);
     toast("Запись удалена");refreshActivist();return;}
-  if(act==="del-comment"){if(!await confirmBox("Удалить комментарий?","Комментарий исчезнет из карточки.","Удалить"))return;
-    const {error}=await S.sb.from("comments").delete().eq("id",id);if(error)return toast(errText(error),true);toast("Комментарий удалён");refreshActivist();return;}
 });
 
 document.addEventListener("submit",async e=>{
@@ -994,12 +975,6 @@ document.addEventListener("submit",async e=>{
       if(error)return setErr(errSel,errText(error));
       if(f.dataset.id)closeDialog();
       toast("Ссылка сохранена");viewLinks();
-    }
-    else if(kind==="comment"){
-      if(!fd.text)return toast("Напишите комментарий",true);
-      const {error}=await S.sb.from("comments").insert({activist_id:S.current.a.id,role:fd.role||"Другое",text:fd.text,author_id:S.me.id});
-      if(error)return toast(errText(error),true);
-      toast("Комментарий опубликован");refreshActivist();
     }
   }catch(err){toast(errText(err),true);}
   finally{if(btn&&btn.isConnected)btn.disabled=false;}

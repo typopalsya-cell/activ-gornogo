@@ -232,6 +232,9 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 .link .u{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .link p{margin:4px 0 0;font-size:14px}
 .link .acts{display:flex;gap:2px}
+.link a.u{display:block;text-decoration:none}
+.link a.u:hover{color:var(--accent-ink);text-decoration:underline}
+.did p a,.rv p a,dl.contacts dd a,.link p a{color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
 .intro-card{background:var(--wait-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:14px}
 .skills{display:flex;flex-direction:column;gap:8px}
 </style>
@@ -297,6 +300,19 @@ function vkLink(v){v=String(v||"").trim();if(!v)return"";if(/^https?:\/\//i.test
 function vkLabel(v){return String(v||"").trim().replace(/^https?:\/\/(www\.)?/i,"");}
 // Ссылка для вкладки «Ссылки»: только http(s), без «javascript:» и прочего
 function safeUrl(v){v=String(v||"").trim();if(!v)return"";if(!/^[a-z][a-z0-9+.-]*:/i.test(v))v="https://"+v;return /^https?:\/\//i.test(v)?v:"";}
+// Адреса в свободном тексте становятся кликабельными. Остальной текст экранируется.
+const URL_RE=/(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+|(?:vk\.com|vk\.cc|t\.me|disk\.yandex\.ru|yadi\.sk|drive\.google\.com|docs\.google\.com|forms\.yandex\.ru|cloud\.mail\.ru)\/[^\s<>"']*)/gi;
+function linkify(text){
+  const str=String(text==null?"":text);let out="",last=0,m;
+  URL_RE.lastIndex=0;
+  while((m=URL_RE.exec(str))){
+    let u=m[0];const trail=(u.match(/[.,!?;:)»"']+$/)||[""])[0];if(trail)u=u.slice(0,-trail.length);
+    const href=safeUrl(u);
+    out+=esc(str.slice(last,m.index))+(href?`<a href="${esc(href)}" target="_blank" rel="noopener">${esc(u)}</a>`:esc(u));
+    last=m.index+u.length;
+  }
+  return out+esc(str.slice(last));
+}
 function plural(n,a,b,c){const m10=n%10,m100=n%100;return n+" "+(m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20))?b:c);}
 let toastT;
 function toast(msg,bad){const t=$("#toast");t.textContent=msg;t.className="toast"+(bad?" bad":"");t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,bad?6500:2800);}
@@ -639,16 +655,16 @@ function entryHTML(w,p){
       ${w.position?`<span class="tag pos">${esc(w.position)}</span>`:""}
       ${p.editEntry||canDel?`<span class="acts">${p.editEntry?`<button class="btn ghost" type="button" data-act="edit-work" data-id="${esc(w.id)}">Изменить</button>`:""}${canDel?`<button class="btn danger" type="button" data-act="del-work" data-id="${esc(w.id)}">Удалить</button>`:""}</span>`:""}
     </div>
-    <div class="did"><span class="rv-h">Что делал(а)</span>${did?`<p>${esc(did)}</p>`:`<span class="none">Не заполнено</span>`}</div>
+    <div class="did"><span class="rv-h">Что делал(а)</span>${did?`<p>${linkify(did)}</p>`:`<span class="none">Не заполнено</span>`}</div>
     ${p.showReviews?`<div class="reviews">
       <div class="rv self">
         <span class="rv-h">Комментарий о своей работе</span>
-        ${w.self_review?`<p>${esc(w.self_review)}</p><span class="rv-by">${w.self_review_name?`со слов активиста, внёс(ла) ${esc(w.self_review_name)} · `:""}${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">Пока не написан</span>`}
+        ${w.self_review?`<p>${linkify(w.self_review)}</p><span class="rv-by">${w.self_review_name?`со слов активиста, внёс(ла) ${esc(w.self_review_name)} · `:""}${esc(fmtTs(w.self_review_at))}</span>`:`<span class="none">Пока не написан</span>`}
         ${p.writeSelf?`<button class="btn" type="button" data-act="review" data-kind="self" data-id="${esc(w.id)}">${w.self_review?"Изменить":"Написать комментарий"}</button>`:""}
       </div>
       <div class="rv go">
         <span class="rv-h">${REVIEW_GO}</span>
-        ${w.go_review?`<p>${esc(w.go_review)}</p><span class="rv-by">${esc(w.go_review_name||"Без имени")} · ${esc(fmtTs(w.go_review_at))}</span>`:`<span class="none">Пока нет отзыва</span>`}
+        ${w.go_review?`<p>${linkify(w.go_review)}</p><span class="rv-by">${esc(w.go_review_name||"Без имени")} · ${esc(fmtTs(w.go_review_at))}</span>`:`<span class="none">Пока нет отзыва</span>`}
         ${p.writeGo?`<button class="btn" type="button" data-act="review" data-kind="go" data-id="${esc(w.id)}">${w.go_review?"Изменить отзыв":"Оставить отзыв"}</button>`:""}
       </div>
     </div>`:""}
@@ -677,7 +693,7 @@ function renderActivist(){
       ${item("Telegram",tg?`<a href="https://t.me/${esc(tg)}" target="_blank" rel="noopener">@${esc(tg)}</a>`:"",tg?"@"+tg:"")}
       ${item("ВКонтакте",a.vk?`<a href="${esc(vkLink(a.vk))}" target="_blank" rel="noopener">${esc(vkLabel(a.vk))}</a>`:"",a.vk?vkLink(a.vk):"")}
       ${item("Почта",a.email?`<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`:"",a.email)}
-      ${a.about?item("О себе / навыки",esc(a.about)):""}
+      ${a.about?item("О себе / навыки",linkify(a.about)):""}
     </dl></section>
     <div class="stack">
       <section class="card">
@@ -754,7 +770,8 @@ async function viewLinks(){
   S.links=data||[];
   $("#links-card").innerHTML=S.links.length?`<div class="links">${S.links.map((l,i)=>{const u=safeUrl(l.url);
     return `<div class="link"><div class="grow">${u?`<a class="t" href="${esc(u)}" target="_blank" rel="noopener">${esc(l.title)}</a>`:`<span class="t">${esc(l.title)}</span>`}
-      <div class="u">${esc(l.url)}</div>${l.description?`<p>${esc(l.description)}</p>`:""}</div>
+      ${u?`<a class="u" href="${esc(u)}" target="_blank" rel="noopener">${esc(l.url)}</a>`:`<div class="u">${esc(l.url)}</div>`}${l.description?`<p>${linkify(l.description)}</p>`:""}</div>
+      ${u?`<a class="btn" href="${esc(u)}" target="_blank" rel="noopener">Открыть ↗</a>`:""}
       ${canEdit()?`<div class="acts">${i>0?`<button class="btn ghost" type="button" data-act="link-up" data-id="${esc(l.id)}" aria-label="Выше">↑</button>`:""}<button class="btn ghost" type="button" data-act="edit-link" data-id="${esc(l.id)}">Изменить</button><button class="btn danger" type="button" data-act="del-link" data-id="${esc(l.id)}">Удалить</button></div>`:""}
     </div>`;}).join("")}</div>`:`<p class="muted" style="margin:0">Ссылок пока нет.${canEdit()?" Добавьте первую формой выше.":""}</p>`;
 }
